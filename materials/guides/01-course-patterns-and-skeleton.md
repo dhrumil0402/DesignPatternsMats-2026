@@ -380,7 +380,7 @@ Sketch (on paper) which layer would own: (a) irrigation decision logic, (b) SQL 
 
 **Required:**
 
-- _Head First Design Patterns_ — Chapter 1: “Welcome to Design Patterns” (course PDF under `docs/materials/`)
+- _Head First Design Patterns_ — Chapter 1: “Welcome to Design Patterns”
 - Phase lab: [Requirements](../../phases/phase-01/requirements.md) · [Guided check](../../phases/phase-01/guided-check.md) · [Questions](../../phases/phase-01/questions.md)
 
 **Further reading:**
