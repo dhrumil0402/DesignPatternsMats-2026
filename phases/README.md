@@ -13,17 +13,19 @@ This folder contains **one directory per implementation phase**. Follow phases *
 
 ### Files in each `phase-NN/` folder
 
-| File                  | When to use                                                                                                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`requirements.md`** | **Start here.** Detailed outcomes, architecture, and acceptance criteria. No implementation code.                                                                       |
+| File | When to use |
+|------|-------------|
+| **`requirements.md`** | **Start here.** Detailed outcomes, architecture, and acceptance criteria. No implementation code. |
 | **`guided-check.md`** | Use **after** you have a design (or if you are stuck). File layout, commands, signatures, and partial snippets so you can check your solution. Not a copy-paste answer. |
-| **`questions.md`**    | Phases **1–11**. Answer after the lab, in your own words. The same items may reappear on the exam.                                                                      |
+| **`questions.md`** | Phases **1–11**. Answer after the lab, in your own words. The same items may reappear on the exam. |
 
 Typical week: read the learning guide → implement from **requirements** → compare against **guided check** → answer **questions** (Phases 1–11).
 
 ### Your project path
 
 Commands in these materials use **`yourpath\project\`** as a placeholder for the folder that contains `docker-compose.yml`, `backend/`, and `frontend/`. Replace it with **your** clone path before you run anything. Do not copy an instructor’s `C:\Users\...` location.
+
+**Compose growth:** Phase 1 runs **PostgreSQL only** in Compose (backend/frontend on the host). From **Phase 2** onward, Compose also runs **backend** and **frontend** (dev containers with bind mounts). Prefer `docker compose up --build -d` and `docker compose exec backend alembic ...` for the rest of the course.
 
 Phases **2–11** follow a **build-optimized** sequence. Each phase adds **backend + React UI + database changes only when the model needs them** (via forward-only migrations).
 
@@ -74,26 +76,26 @@ flowchart LR
 
 ### Required phases (1–12)
 
-|                          Phase | Pattern / focus      | Database (cumulative)                               |
-| -----------------------------: | -------------------- | --------------------------------------------------- |
-| [01](phase-01/requirements.md) | Skeleton             | Tooling only; DB reachable                          |
-| [02](phase-02/requirements.md) | Factory Method       | `devices` (sensors)                                 |
-| [03](phase-03/requirements.md) | Abstract Factory     | `device_family` on devices; actuator rows           |
-| [04](phase-04/requirements.md) | Builder              | `locations`, `zones` (`location_id`), config fields |
-| [05](phase-05/requirements.md) | Adapter              | `sensor_readings`                                   |
-| [06](phase-06/requirements.md) | Strategy             | `automation_rules` / strategy on location           |
-| [07](phase-07/requirements.md) | Facade               | _(no schema change—read models only)_               |
-| [08](phase-08/requirements.md) | State                | `actuator_states`                                   |
-| [09](phase-09/requirements.md) | Decorator            | `actuator_execution_log`                            |
-| [10](phase-10/requirements.md) | Command              | `command_log`                                       |
-| [11](phase-11/requirements.md) | Observer             | `alerts`                                            |
+|                                                     Phase | Pattern / focus      | Database (cumulative)                               |
+| --------------------------------------------------------: | -------------------- | --------------------------------------------------- |
+|                 [01](phase-01/requirements.md) | Skeleton             | Tooling only; DB reachable                          |
+|           [02](phase-02/requirements.md) | Factory Method       | `devices` (sensors); full-stack Compose (backend + frontend) |
+|         [03](phase-03/requirements.md) | Abstract Factory     | `device_family` on devices; actuator rows           |
+|                  [04](phase-04/requirements.md) | Builder              | `locations`, `zones` (`location_id`), config fields |
+|                  [05](phase-05/requirements.md) | Adapter              | `sensor_readings`                                   |
+|                 [06](phase-06/requirements.md) | Strategy             | `automation_rules` / strategy on location           |
+|                   [07](phase-07/requirements.md) | Facade               | _(no schema change—read models only)_               |
+|                    [08](phase-08/requirements.md) | State                | `actuator_states`                                   |
+|                [09](phase-09/requirements.md) | Decorator            | `actuator_execution_log`                            |
+|                  [10](phase-10/requirements.md) | Command              | `command_log`                                       |
+|                 [11](phase-11/requirements.md) | Observer             | `alerts`                                            |
 | [12](phase-12/requirements.md) | API + WS + hardening | Indexes, FKs, seeds; drop `/dev` routes             |
 
 ### Optional enrichment (13–14)
 
-|                                       Phase | Pattern / focus | Database (cumulative)          |
-| ------------------------------------------: | --------------- | ------------------------------ |
-| [13](phase-13/requirements.md) _(optional)_ | Polish          | Optional view/index for charts |
+|                                                         Phase | Pattern / focus | Database (cumulative)          |
+| ------------------------------------------------------------: | --------------- | ------------------------------ |
+|   [13](phase-13/requirements.md) _(optional)_ | Polish          | Optional view/index for charts |
 | [14](phase-14/requirements.md) _(optional)_ | Tests + demo    | Test DB + migration smoke      |
 
 ---
@@ -142,19 +144,19 @@ alerts
 
 **No physical greenhouse hardware is required** for the required track (Phases 1–12). Sensor reads and actuator applies are **mocked** through adapters behind domain **ports**—the course uses **simulation** and **vendor-stub** (edge) adapters interchangeably with “mock” in lab copy.
 
-| Layer                  | Role                                                                                            | Phases                                                   |
-| ---------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| **Device metadata**    | `device_family` (`simulation` \| `edge`), `default_config.protocol` hints                       | 3                                                        |
-| **I/O (read / apply)** | `SensorPort` + `ActuatorPort`; concrete adapters selected by family or protocol                 | 5 (sensors + actuator stub); 9–10 decorate actuator port |
-| **Business logic**     | Strategy, State, Command, Observer use **persisted** readings and state—not GPIO or vendor SDKs | 6–12                                                     |
+| Layer | Role | Phases |
+| ----- | ---- | ------ |
+| **Device metadata** | `device_family` (`simulation` \| `edge`), `default_config.protocol` hints | 3 |
+| **I/O (read / apply)** | `SensorPort` + `ActuatorPort`; concrete adapters selected by family or protocol | 5 (sensors + actuator stub); 9–10 decorate actuator port |
+| **Business logic** | Strategy, State, Command, Observer use **persisted** readings and state—not GPIO or vendor SDKs | 6–12 |
 
 **Terminology map**
 
-| Course term                   | Meaning                                                                                               |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `simulation` family / adapter | In-process plausible values; `source: "simulation"` on readings                                       |
-| `edge` family                 | Stub hardware kit (labels + config differ from simulation)                                            |
-| Vendor-stub adapter           | Stands in for a legacy/vendor SDK; different raw shape, same normalized `Reading`; `source: "vendor"` |
+| Course term | Meaning |
+| ----------- | ------- |
+| `simulation` family / adapter | In-process plausible values; `source: "simulation"` on readings |
+| `edge` family | Stub hardware kit (labels + config differ from simulation) |
+| Vendor-stub adapter | Stands in for a legacy/vendor SDK; different raw shape, same normalized `Reading`; `source: "vendor"` |
 
 Phases **6 onward** consume `sensor_readings`, `actuator_states`, and logs from the database. They do not care whether the underlying adapter was simulated or vendor-stubbed.
 
@@ -177,7 +179,7 @@ Add `docs/patterns/<pattern-name>.md` when you implement that pattern (start at 
 
 **Student learning guides** (read before each lab): [`docs/materials/guides/README.md`](../materials/guides/README.md)
 
-**Phase questions** (answer after each lab, Phases 1–11): `questions.md` in that phase folder.
+**Phase questions** (answer after each lab, Phases 1–11): `questions.md` in that phase folder. Instructor keys: [`docs/phases/keys/`](./keys/).
 
 ---
 

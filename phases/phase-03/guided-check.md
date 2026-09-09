@@ -43,12 +43,12 @@ Keep Phase 2 `domain/sensors/creators.py`.
 ## Step 0 — Phase 2 baseline
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-alembic current
+cd "yourpath\project\"
+docker compose up --build -d
+docker compose exec backend alembic current
 ```
 
-Note head revision id — Phase 3 autogenerate must use it as `down_revision`. Confirm sensors still load.
+Note head revision id — Phase 3 autogenerate must use it as `down_revision`. Confirm sensors still load on the dashboard and Scalar.
 
 ---
 
@@ -62,7 +62,7 @@ device_family: Mapped[str]  # String(32), nullable=False, server_default="simula
 ```
 
 ```powershell
-alembic revision --autogenerate -m "device_family"
+docker compose exec backend alembic revision --autogenerate -m "device_family"
 ```
 
 **Check:** `upgrade()` adds `device_family` (and index). If existing rows need backfill:
@@ -72,7 +72,7 @@ op.execute("UPDATE devices SET device_family = 'simulation' WHERE device_family 
 ```
 
 ```powershell
-alembic upgrade head
+docker compose exec backend alembic upgrade head
 ```
 
 `\d devices` shows `device_family`.

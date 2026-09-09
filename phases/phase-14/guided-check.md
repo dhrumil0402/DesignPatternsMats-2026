@@ -59,14 +59,14 @@ Fill `db_session` with a transactional session against a migrated test DB — do
 ## Migration smoke
 
 ```powershell
-docker compose up -d
-# empty volume or dedicated test container
-cd backend
-alembic upgrade head
-alembic current
+docker compose up --build -d
+docker compose exec backend alembic upgrade head
+docker compose exec backend alembic current
 ```
 
-CI job equivalent: start Postgres service → upgrade head → pytest.
+Host venv + published Postgres port remains fine for local pytest. Optional: `docker compose exec backend pytest`.
+
+CI job equivalent: start Compose stack → upgrade head → pytest.
 
 ---
 

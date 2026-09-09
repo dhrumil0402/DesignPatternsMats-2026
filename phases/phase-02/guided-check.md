@@ -16,7 +16,9 @@ Paths are relative to **`yourpath\project\`** (replace with your clone path).
 
 ```text
 yourpath\project\
+├── docker-compose.yml              # postgres + backend + frontend
 ├── backend/
+│   ├── Dockerfile                  # NEW
 │   ├── alembic/versions/
 │   │   ├── 001_baseline.py
 │   │   └── <rev>_devices.py        # NEW — autogenerate
@@ -30,25 +32,108 @@ yourpath\project\
 │       │   ├── models.py
 │       │   └── device_repository.py
 │       └── interfaces/api/sensors.py
-└── frontend/src/
-    ├── services/api.ts
-    └── features/sensors/SensorList.tsx
+└── frontend/
+    ├── Dockerfile                  # NEW
+    └── src/
+        ├── services/api.ts
+        └── features/sensors/SensorList.tsx
 ```
 
 ---
 
-## Step 0 — Working Phase 1 stack
+## Step 0 — Working Phase 1 stack (host is fine)
+
+Confirm Phase 1 still works the Phase 1 way (Postgres via Compose; backend/frontend on the host) **before** you containerize the apps in Step 1.
 
 ```powershell
 cd "yourpath\project\"
 docker compose up -d
 ```
 
-Backend: venv → `cd src` → `uvicorn main:app --reload --port 8000`. Frontend: `npm run dev`. Confirm dashboard and Scalar before changing code.
+Optional host check: venv → `uvicorn` on `:8000`; `npm run dev` on `:5173`. Health and dashboard OK.
 
 ---
 
-## Step 1 — Persistence layer (before migration)
+## Step 1 — Full-stack Compose
+
+Add Dockerfiles and extend Compose. Intent: **one** `docker compose up --build` runs DB + API + UI with bind mounts for reload.
+
+**`backend/Dockerfile`** (shape — adjust paths to match your layout):
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY pyproject.toml ./
+COPY src ./src
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY tests ./tests
+RUN pip install --no-cache-dir -e ".[dev]"
+ENV PYTHONPATH=/app/src
+WORKDIR /app
+CMD ["uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "src"]
+```
+
+**`frontend/Dockerfile`:**
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+EXPOSE 5173
+CMD ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"]
+```
+
+**Compose services** (add alongside existing `postgres`; names can vary):
+
+```yaml
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/alembic:/app/alembic
+      - ./backend/tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  # keep existing postgres volume
+  frontend_node_modules:
+```
+
+Inside the backend container the DB host is **`postgres`**, not `localhost`. The browser still calls `http://localhost:8000`.
+
+```powershell
+docker compose up --build -d
+docker compose ps
+curl http://localhost:8000/health
+```
+
+**Check:** three services running; health `"db": "ok"`; dashboard at http://localhost:5173/dashboard.
+
+---
+
+## Step 2 — Persistence layer (before migration)
 
 **`base.py`**
 
@@ -77,26 +162,26 @@ class Base(DeclarativeBase):
 
 ---
 
-## Step 2 — Autogenerate
+## Step 3 — Autogenerate
 
-From `yourpath\project\backend\` with venv active (not `src/`):
+From the project root with Compose up:
 
 ```powershell
-alembic revision --autogenerate -m "devices"
+docker compose exec backend alembic revision --autogenerate -m "devices"
 ```
 
-Review: `down_revision` is Phase 1 id; `upgrade()` contains `op.create_table("devices", ...)`. If `upgrade()` is `pass` only, metadata is not wired — delete the file and regenerate.
+If Alembic’s cwd is wrong inside the image, set `working_dir` / `command` so `alembic.ini` is found (often `/app`, not `/app/src`). Review: `down_revision` is Phase 1 id; `upgrade()` contains `op.create_table("devices", ...)`. If `upgrade()` is `pass` only, metadata is not wired — delete the file and regenerate.
 
 ```powershell
-alembic upgrade head
+docker compose exec backend alembic upgrade head
 docker exec -it greenhouse-postgres psql -U greenhouse -d greenhouse -c "\d devices"
 ```
 
-Discipline for later phases: change models → autogenerate → review → upgrade. Never edit applied revisions.
+Discipline for later phases: change models → autogenerate → review → upgrade (via `docker compose exec backend`). Never edit applied revisions.
 
 ---
 
-## Step 3 — Domain + Factory Method
+## Step 4 — Domain + Factory Method
 
 **`Sensor`** fields: `id: UUID | None`, `device_type`, `display_name`, `default_config`.
 
@@ -124,7 +209,7 @@ def get_creator(sensor_type: str) -> SensorCreator:
 
 ---
 
-## Step 4 — Repository + service
+## Step 5 — Repository + service
 
 ```python
 class DeviceRepository:
@@ -145,7 +230,7 @@ class SensorService:
 
 ---
 
-## Step 5 — REST
+## Step 6 — REST
 
 Prefix `/api/sensors`, tags `["sensors"]`.
 
@@ -169,11 +254,11 @@ curl http://localhost:8000/api/sensors
 curl -X POST http://localhost:8000/api/sensors -H "Content-Type: application/json" -d "{\"type\":\"moisture\"}"
 ```
 
-**Check:** Scalar **sensors** tag; GET still returns rows after restart.
+**Check:** Scalar **sensors** tag; GET still returns rows after `docker compose restart backend`.
 
 ---
 
-## Step 6 — Frontend
+## Step 7 — Frontend
 
 `api.ts` types/functions: `SensorDto`, `fetchSensors()`, `createSensor(type, displayName?)`.
 
@@ -183,20 +268,21 @@ curl -X POST http://localhost:8000/api/sensors -H "Content-Type: application/jso
 
 ---
 
-## Step 7 — Tests (names, not full files)
+## Step 8 — Tests (names, not full files)
 
 - `test_moisture_creator_defaults` — type `moisture_sensor`; threshold key present
 - `test_light_creator_defaults` — type `light_sensor`; unit differs
 - Optional API test for GET/POST
 
 ```powershell
-$env:PYTHONPATH = "src"
-pytest tests -q
+docker compose exec backend pytest tests -q
 ```
+
+(Host venv + `PYTHONPATH=src` remains fine for unit tests.)
 
 ---
 
-## Step 8 — Pattern doc
+## Step 9 — Pattern doc
 
 `docs/patterns/factory-method.md`: problem, solution, code paths, exercise (temperature creator).
 
@@ -204,10 +290,11 @@ pytest tests -q
 
 ## Phase 2 completion checklist
 
-- [ ] Autogenerate reviewed and applied
+- [ ] Compose runs postgres + backend + frontend; health + dashboard OK
+- [ ] Autogenerate reviewed and applied via Compose exec
 - [ ] `\d devices` shows expected columns
 - [ ] POST moisture/light → 201 with distinct `default_config`
-- [ ] GET persists across restart
+- [ ] GET persists across backend restart
 - [ ] Scalar sensors tag
 - [ ] Dashboard Sensors section works
 - [ ] Creator tests pass
@@ -219,11 +306,13 @@ pytest tests -q
 
 | Symptom | Fix |
 |---------|-----|
+| Backend cannot reach DB | `DATABASE_URL` host must be `postgres` in Compose |
 | Empty autogenerate | Import `Base` + `models` in `env.py` |
-| `relation "devices" does not exist` | `alembic upgrade head` from `backend/` |
+| `relation "devices" does not exist` | `docker compose exec backend alembic upgrade head` |
 | 404 on `/api/sensors` | `include_router` |
 | Empty list after create | `commit()` in repository |
-| Test import errors | `PYTHONPATH=src` |
+| Frontend can’t reach API | Publish `8000`; `VITE_API_BASE_URL=http://localhost:8000` |
+| Test import errors | `PYTHONPATH=src` or run pytest in the backend container |
 
 ---
 

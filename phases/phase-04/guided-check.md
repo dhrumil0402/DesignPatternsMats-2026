@@ -44,10 +44,9 @@ frontend/src/components/config/LocationConfigWizard.tsx
 ## Step 0 — Phase 3 baseline
 
 ```powershell
-docker compose up -d
-cd backend
-.\.venv\Scripts\Activate.ps1
-alembic current
+cd "yourpath\project\"
+docker compose up --build -d
+docker compose exec backend alembic current
 ```
 
 Confirm `/api/devices` and dashboard families still work.
@@ -63,8 +62,8 @@ Confirm `/api/devices` and dashboard families still work.
 Optional: nullable `devices.location_id` FK.
 
 ```powershell
-alembic revision --autogenerate -m "locations_and_zones"
-alembic upgrade head
+docker compose exec backend alembic revision --autogenerate -m "locations_and_zones"
+docker compose exec backend alembic upgrade head
 ```
 
 **Check:** `\d zones` shows **`location_id`**, not `greenhouse_id`.

@@ -19,6 +19,7 @@ When you finish this phase, Phase 3 can extend the same `devices` table with act
 
 ## Outcome required at end of phase
 
+- `docker compose up` starts **PostgreSQL, backend, and frontend** (dev containers); Scalar and the dashboard are reachable on localhost without separate host uvicorn/npm terminals.
 - `devices` table exists with columns needed for sensor identity, type, role, display name, default config, and created timestamp.
 - Factory Method creators produce moisture and light sensors with distinct default configurations.
 - `POST /api/sensors` creates a persisted sensor; `GET /api/sensors` lists them after a backend restart.
@@ -69,6 +70,11 @@ If any prerequisite is missing, fix it first; this phase assumes that foundation
   - Typed API helpers for list/create.
   - Sensor list UI mounted in `#sensors` with add actions, loading/error/empty states.
 
+- **Dev Compose (this phase)**
+  - Extend Phase 1 `docker-compose.yml` with `backend` and `frontend` services (bind mounts + reload).
+  - Backend talks to Postgres via hostname `postgres` inside the Compose network.
+  - Browser still uses `http://localhost:8000` and `http://localhost:5173` (published ports).
+
 ---
 
 ## Suggested file locations
@@ -77,17 +83,23 @@ Paths are relative to **`yourpath\project\`**.
 
 ```text
 yourpath\project\
-├── backend/src/
-│   ├── domain/sensors/entity.py          # Sensor
-│   ├── domain/sensors/creators.py        # SensorCreator + moisture/light
-│   ├── application/sensors/service.py
-│   ├── infrastructure/persistence/base.py
-│   ├── infrastructure/persistence/models.py          # DeviceRow
-│   ├── infrastructure/persistence/device_repository.py
-│   └── interfaces/api/sensors.py
-└── frontend/src/
-    ├── services/api.ts
-    └── features/sensors/SensorList.tsx
+├── docker-compose.yml                    # postgres + backend + frontend
+├── backend/
+│   ├── Dockerfile
+│   ├── alembic/
+│   └── src/
+│       ├── domain/sensors/entity.py          # Sensor
+│       ├── domain/sensors/creators.py        # SensorCreator + moisture/light
+│       ├── application/sensors/service.py
+│       ├── infrastructure/persistence/base.py
+│       ├── infrastructure/persistence/models.py          # DeviceRow
+│       ├── infrastructure/persistence/device_repository.py
+│       └── interfaces/api/sensors.py
+└── frontend/
+    ├── Dockerfile
+    └── src/
+        ├── services/api.ts
+        └── features/sensors/SensorList.tsx
 ```
 
 ## Type hints
@@ -125,7 +137,29 @@ Frontend `SensorDto`: `id: string`, `device_type: string`, `display_name: string
 
 ## Step-by-step implementation requirements
 
-## Step 1 — Persistence models (before migration)
+## Step 1 — Full-stack Compose (backend + frontend)
+
+Phase 1 left Compose as **Postgres only** and ran the API/UI on the host. In this phase, add **dev containers** so one Compose command runs the stack. Host venv/`npm run dev` may remain for debugging; Compose is the **required** path for acceptance checks from here on.
+
+Implement:
+
+- `backend/Dockerfile` — Python 3.11+, install the project (including Alembic), run Uvicorn with `--reload` on `0.0.0.0:8000`.
+- `frontend/Dockerfile` — Node 20, install deps, run Vite with `--host 0.0.0.0` on port 5173.
+- Extend root `docker-compose.yml` with `backend` and `frontend` services:
+  - Bind-mount source so hot reload works inside the containers.
+  - Publish ports `8000` and `5173`.
+  - Backend `DATABASE_URL` must use hostname **`postgres`** (Compose service name), not `localhost`.
+  - `depends_on` Postgres with a health condition; frontend may depend on backend.
+  - CORS / `VITE_API_BASE_URL` stay browser-facing (`http://localhost:8000`) because the browser runs on the host.
+
+Acceptance criteria:
+
+- `docker compose up --build -d` (or equivalent) shows postgres, backend, and frontend running.
+- `GET http://localhost:8000/health` reports `"db": "ok"`.
+- Dashboard loads at `http://localhost:5173/dashboard`.
+- Alembic from this phase onward can be run with `docker compose exec backend alembic ...` (working directory as needed).
+
+## Step 2 — Persistence models (before migration)
 
 Define infrastructure ORM **before** generating a migration.
 
@@ -149,25 +183,25 @@ Add a database session generator the API can depend on.
 Acceptance criteria:
 
 - ORM lives in infrastructure, not domain.
-- `alembic revision --autogenerate` would see the `devices` table (you generate it in Step 2).
+- `alembic revision --autogenerate` would see the `devices` table (you generate it in Step 3).
 
-## Step 2 — Generate migration via Alembic
+## Step 3 — Generate migration via Alembic
 
 Do **not** hand-write the table.
 
-- Preconditions: Postgres up, Phase 1 revision current, models and `target_metadata` saved.
-- Generate a revision with a message such as `devices`.
+- Preconditions: full Compose stack up (Step 1), Phase 1 revision current, models and `target_metadata` saved.
+- Generate a revision with a message such as `devices` (prefer `docker compose exec backend alembic revision --autogenerate -m "devices"`).
 - Review `upgrade()`: `create_table("devices", ...)` with the expected columns; `down_revision` is the Phase 1 id.
 - If `upgrade()` is empty, fix metadata wiring, delete the bad file, regenerate.
-- Apply with `alembic upgrade head`. Never edit an already-applied revision.
+- Apply with `docker compose exec backend alembic upgrade head` (or equivalent). Never edit an already-applied revision.
 
 Acceptance criteria:
 
-- `alembic current` is the new revision.
+- `alembic current` (via Compose exec) is the new revision.
 - Database inspection shows `devices` with the expected columns.
 - Migration chain is forward-only.
 
-## Step 3 — Domain: entity + Factory Method
+## Step 4 — Domain: entity + Factory Method
 
 Implement:
 
@@ -181,7 +215,7 @@ Acceptance criteria:
 - HTTP handlers do not instantiate sensor types directly.
 - Unknown type keys fail in domain/application before a useless insert.
 
-## Step 4 — Repository and application service
+## Step 5 — Repository and application service
 
 Repository:
 
@@ -199,7 +233,7 @@ Acceptance criteria:
 - Create path always goes through a creator.
 - List after restart still returns rows (commit actually happens).
 
-## Step 5 — REST API
+## Step 6 — REST API
 
 Expose:
 
@@ -219,7 +253,7 @@ Acceptance criteria:
 - Scalar **sensors** tag shows GET and POST.
 - Restart backend; GET still returns created rows.
 
-## Step 6 — Frontend Sensors section
+## Step 7 — Frontend Sensors section
 
 - Extend the API client with sensor types and list/create functions. JSON field names must match the backend.
 - Replace the Sensors placeholder with a list that can add moisture and light sensors.
@@ -233,7 +267,7 @@ Acceptance criteria:
 - User can add both sensor types from the UI.
 - Refresh still shows them.
 
-## Step 7 — Tests
+## Step 8 — Tests
 
 Minimum:
 
@@ -244,7 +278,7 @@ Acceptance criteria:
 
 - Creator tests pass without a database.
 
-## Step 8 — Documentation
+## Step 9 — Documentation
 
 Create `docs/patterns/factory-method.md` covering:
 
@@ -259,7 +293,8 @@ Create `docs/patterns/factory-method.md` covering:
 
 Phase 2 is done when all items below are true:
 
-- Autogenerated `devices` migration is applied.
+- `docker compose` runs postgres, backend, and frontend; health and dashboard work via localhost ports.
+- Autogenerated `devices` migration is applied (via Compose exec is fine).
 - Factory Method creators produce distinct defaults.
 - `POST /api/sensors` with moisture/light returns 201; GET lists persisted sensors after restart.
 - Scalar documents sensors endpoints.
@@ -271,6 +306,7 @@ Phase 2 is done when all items below are true:
 
 ## Common pitfalls to avoid
 
+- Leaving backend `DATABASE_URL` pointed at `localhost` inside Compose (use hostname `postgres`).
 - Hand-writing the migration instead of autogenerate.
 - Forgetting to import models in Alembic `env.py` (empty upgrade).
 - Putting SQLAlchemy models in the domain package.
@@ -282,6 +318,7 @@ Phase 2 is done when all items below are true:
 
 ## Handoff to next phases
 
+- Later phases use **`docker compose up --build -d`** for the full stack. Prefer `docker compose exec backend alembic ...` for migrations.
 - Phase 3 (Abstract Factory) will add `device_family` and actuators as a **bundle**. Keep Factory Method creators; the family factory will compose them.
 - Phase 5 (Adapter) will add **mocked** sensor readings via simulation and vendor-stub adapters (no lab hardware).
 - Do not add `device_family` or actuator rows in this phase.
