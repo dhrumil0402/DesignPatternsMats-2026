@@ -142,34 +142,40 @@ alerts
 
 ## Device I/O strategy (simulation-first)
 
-**No physical greenhouse hardware is required** for the required track (Phases 1–12). Sensor reads and actuator applies are **mocked** through adapters behind domain **ports**—the course uses **simulation** and **vendor-stub** (edge) adapters interchangeably with “mock” in lab copy.
+**No physical greenhouse hardware is required** for the required track (Phases 1–12). Sensor reads and actuator applies go through adapters behind domain **ports**. Simulation devices generate values in code. An ESP32 can attach later over HTTP, or through an optional MQTT broker. The course demo still runs on the sampler alone. The dashboard WebSocket is not a device channel.
 
 | Layer | Role | Phases |
 | ----- | ---- | ------ |
-| **Device metadata** | `device_family` (`simulation` \| `edge`), `default_config.protocol` hints | 3 |
-| **I/O (read / apply)** | `SensorPort` + `ActuatorPort`; concrete adapters selected by family or protocol | 5 (sensors + actuator stub); 9–10 decorate actuator port |
-| **Business logic** | Strategy, State, Command, Observer use **persisted** readings and state—not GPIO or vendor SDKs | 6–12 |
+| **Device metadata** | `device_family` (`simulation` \| `edge`), `default_config.protocol` (`simulation` \| `http` \| `mqtt`) | 3; `simulation` \| `mqtt` selector in 5; `http` in 12 |
+| **Sampling config** | `sampling_interval_seconds` (default 300, minimum 5), `tracking_enabled` (default true). Columns are the source of truth after Phase 5 backfills interval from `default_config` | 5 |
+| **I/O (read / apply)** | `SensorPort` + `ActuatorPort`. Simulation sampler records enabled simulation devices when the interval has elapsed. Phase 12 device HTTP and the optional MQTT subscriber call the same ingest. Vendor stub stays a translation exercise | 5 (sensors, sampler, MQTT translate, actuator stub); 9–10 decorate actuator port; 12 HTTP + optional broker |
+| **Live UI** | Ingest publishes `reading.created` only when tracking is on. Phase 12 dashboard WebSocket fans that out. Sensor cards poll latest readings until then | 11 publish; 12 push |
+| **Business logic** | Strategy, State, Command, Observer use **persisted** readings and state—not GPIO, a broker client, or vendor SDKs | 6–12 |
 
 **Terminology map**
 
 | Course term | Meaning |
 | ----------- | ------- |
-| `simulation` family / adapter | In-process plausible values; `source: "simulation"` on readings |
-| `edge` family | Stub hardware kit (labels + config differ from simulation) |
-| Vendor-stub adapter | Stands in for a legacy/vendor SDK; different raw shape, same normalized `Reading`; `source: "vendor"` |
+| `simulation` family / adapter | In-process generated values on the device interval; `source: "simulation"` |
+| `edge` family + `protocol: http` | Direct ESP32 kit. The device GETs sampling config and POSTs readings. No broker |
+| `edge` family + `protocol: mqtt` | Broker kit. Phase 5 translates a payload dict. Phase 12 subscribes only when a broker URL is set |
+| Vendor-stub adapter | Legacy/vendor SDK shape, same normalized `Reading`; `source: "vendor"`. Not the ESP32 path |
+| `tracking_enabled` false | Sampler skips the device. Ingest does not publish `reading.created`. A device payload may still be stored |
 
-Phases **6 onward** consume `sensor_readings`, `actuator_states`, and logs from the database. They do not care whether the underlying adapter was simulated or vendor-stubbed.
+The backend clock drives simulation devices. It does not poll the ESP32. An `http` device reads `{ sampling_interval_seconds, tracking_enabled }` with GET and posts on its own clock. An `mqtt` device gets the same JSON as a retained config message (`greenhouse/devices/{device_id}/config`) when the broker is configured. Topics use the prefix `greenhouse/` as a channel name, not a `greenhouse_id` column. Mosquitto is a Compose profile, not part of the default stack.
 
-### Swapping to real hardware later
+Phases **6 onward** consume `sensor_readings`, `actuator_states`, and logs from the database. They do not care whether the row came from the sampler, a manual read, device HTTP, or MQTT ingest.
 
-Do **not** rewrite application services or automation rules. Extend infrastructure only:
+### Other hardware later
+
+HTTP for ESP32-style controllers is in this track. MQTT is the optional broker path. Other buses stay optional. Do **not** rewrite application services or automation rules. Extend infrastructure only:
 
 1. Implement new adapters (`GpioSensorAdapter`, `DmxActuatorAdapter`, …) that implement the same `SensorPort` / `ActuatorPort`.
 2. Extend the adapter selector (e.g. `protocol == "gpio"` → GPIO adapter).
 3. Optionally add a live `DeviceFamilyFactory` or config flag; keep `sensor_readings` and related schemas unchanged.
 4. Leave Strategy, State, Command, and Observer on persisted data—they already abstract away I/O.
 
-Details and acceptance criteria: [Phase 5 requirements](phase-05/requirements.md) (ports + adapters) and handoff section (beyond-the-course checklist).
+Details and acceptance criteria: [Phase 5 requirements](phase-05/requirements.md) (ports, sampler, sampling columns) and [Phase 12 requirements](phase-12/requirements.md) (device HTTP, optional broker, dashboard WebSocket).
 
 ---
 

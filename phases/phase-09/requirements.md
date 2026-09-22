@@ -29,6 +29,7 @@ Wrap the actuator **port** with **decorators** that apply policies (logging, max
 
 - Phase 8: `actuator_states` and domain transitions.
 - Phase 5: `ActuatorPort` and `SimulationActuatorAdapter` in `infrastructure/adapters/actuators/simulation.py` (required—not optional; decorators wrap this innermost port).
+- Sensor readings may arrive from the sampler or MQTT ingest, not only `POST /read`. Do not add a scheduler, MQTT client, or the device readings route in this phase.
 
 ---
 

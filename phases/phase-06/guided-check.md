@@ -89,7 +89,7 @@ class AutomationService:
         ...
 ```
 
-Do **not** pass `DeviceRow` / `ZoneRow` into strategy classes. Thresholds come from `zones`, not hardcoded constants.
+Do **not** pass `DeviceRow` / `ZoneRow` into strategy classes. Thresholds come from `zones`, not hardcoded constants. The latest moisture row may come from a manual read, the sampler, or a translated MQTT payload. This phase does not add a sampler.
 
 **Check:** strategies import no SQLAlchemy; missing location → not-found style error.
 

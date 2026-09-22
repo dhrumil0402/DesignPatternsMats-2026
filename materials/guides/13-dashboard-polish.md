@@ -47,7 +47,7 @@ Pilots do not guess whether altimeter data is live. Instruments show **valid**, 
 | **Empty** | “Nothing here yet” + next step | Honest copy; link to config wizard |
 | **Error** | What failed + retry | Surface API message; don’t swallow 500s |
 | **Ready** | Actionable data | Typed models from API contract |
-| **Live / offline** | Trust in realtime | WebSocket badge: connected / reconnecting / offline |
+| **Live / offline** | Trust in realtime | WebSocket badge: connected / connecting / down |
 
 Extract view-state logic into **pure functions** (or hooks) you can unit test—`seats_view(loading, error, seats)` in Python mirrors a TypeScript discriminated union in React.
 
@@ -63,7 +63,7 @@ stateDiagram-v2
   Error --> Loading: retry
 ```
 
-Parallel **connection state** (`connected | connecting | offline`) prefixes or badges realtime panels without conflating data errors with socket drops.
+Parallel **connection state** (`connected | connecting | down`) prefixes or badges realtime panels without conflating data errors with socket drops.
 
 ### When to polish / when to stop
 
@@ -131,7 +131,7 @@ if (view.status === "error") return <p>Could not load: {view.message}</p>;
 
 ### Step C — Connection badge
 
-Wire `connected | connecting | offline` from WebSocket `onopen` / `onclose`.
+Wire `connected | connecting | down` from WebSocket `onopen` / `onclose`.
 
 ---
 
@@ -261,7 +261,7 @@ Polish the **greenhouse** operator dashboard: charts, alerts, connection status,
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
 | ArenaTickets seat-map empty/error/loading | Same four UI states on existing greenhouse panels |
-| Silent socket drop on a venue board | Connection badge (connected / retrying / offline) |
+| Silent socket drop on a venue board | Connection badge (connected / connecting / down) |
 | Placeholder occupancy chart | Charts from persisted `sensor_readings` |
 | New ticketing screens | Refine `#overview`, sensors, alerts — don’t rewrite the app |
 

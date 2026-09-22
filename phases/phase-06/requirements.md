@@ -11,6 +11,7 @@ Add **pluggable automation strategies** that decide irrigation (or equivalent) f
 ## Scope and naming rules
 
 - Evaluate **per `location_id`**, using `zones` thresholds from Phase 4 and `sensor_readings` from Phase 5.
+- Those readings may come from a manual read, the simulation sampler, or a translated MQTT payload. Do not assume a row exists only after `POST /read`. Do not add a scheduler, sampling UI, MQTT client, or the device readings route in this phase.
 - Do not hard-code “if moisture < 0.3” in the API handler. Algorithms live in strategy classes behind a common interface.
 - `location_id` naming only — no `greenhouse_id`.
 
@@ -27,7 +28,7 @@ Add **pluggable automation strategies** that decide irrigation (or equivalent) f
 
 ## Prerequisites
 
-- Phase 5: `sensor_readings` populated by reads.
+- Phase 5: `sensor_readings` populated by the shared ingest path (manual read, simulation sampler, or translated MQTT payload).
 - Phase 4: zones with moisture thresholds and `location_id`.
 - Alembic at Phase 5 head.
 
@@ -178,6 +179,6 @@ Acceptance criteria:
 
 ## Handoff to next phases
 
-- Phase 7 (Facade) will aggregate latest readings, strategy key, and last recommendation into one overview DTO.
+- Phase 7 (Facade) will aggregate latest readings, strategy key, and last recommendation into one overview DTO. Latest rows may already be arriving from the sampler or MQTT ingest; this phase does not own that pipeline.
 
 → [Phase 7 — Facade (requirements)](../phase-07/requirements.md) · [guided check](../phase-07/guided-check.md)

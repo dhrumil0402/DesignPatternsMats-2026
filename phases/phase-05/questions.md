@@ -43,14 +43,14 @@
 >
 > _(Write your answer here.)_
 
-5. You need **at least two** adapters (simulation and a vendor stub) with **different raw shapes** but the same normalized reading. Why is the different raw shape the point of the exercise? How does the `source` field on a reading show which adapter produced it?
+5. You need three translations onto the same normalized reading: a simulation adapter, a vendor stub, and an MQTT translator that accepts a payload dict. Why is the different raw shape the point of the exercise? How does `source` (`simulation`, `vendor`, or `mqtt`) show which adapter produced the reading, and why must the MQTT translator not open a broker in this phase? Phase 12 may deliver that same dict on a device HTTP route or through an optional broker — why must this phase still not open either transport?
 
 > [!NOTE]
 > ***Your Answer***
 >
 > _(Write your answer here.)_
 
-6. Readings are **appended** to `sensor_readings` (history grows). Why not keep only the latest value in memory or overwrite a single row? Which later phase consumes this history?
+6. Readings are **appended** to `sensor_readings` (history grows). Why not keep only the latest value in memory or overwrite a single row, and which later phase consumes this history? Why do a manual read, the simulation sampler, and (later) MQTT share **one** writer of that table? Why does the sampler skip devices with tracking off and MQTT devices, and why do sensor cards poll the latest stored reading until Phase 12?
 
 > [!NOTE]
 > ***Your Answer***

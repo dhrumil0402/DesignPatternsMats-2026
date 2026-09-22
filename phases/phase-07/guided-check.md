@@ -76,12 +76,21 @@ Example response:
   "location": { "id": "<uuid>", "name": "Lab Site A" },
   "device_counts": { "sensor": 2, "actuator": 2 },
   "latest_readings": [
-    { "device_id": "<uuid>", "value": 0.31, "unit": "vwc", "recorded_at": "..." }
+    {
+      "device_id": "<uuid>",
+      "value": 0.31,
+      "unit": "vwc",
+      "recorded_at": "...",
+      "tracking_enabled": true,
+      "sampling_interval_seconds": 300
+    }
   ],
   "strategy_key": "conservative",
   "last_recommendation": { "action": "wait", "reason": "..." }
 }
 ```
+
+Rows in `latest_readings` may come from the sampler or MQTT ingest, not only from `POST /read`.
 
 `#overview`: one `fetchOverview(locationId)`; cards for counts, readings, strategy, recommendation. Optional refresh button.
 

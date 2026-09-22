@@ -45,7 +45,7 @@ A venue can run rehearsals with temporary wiring and handwritten seat charts. Op
 | **API contract** | Stable request/response DTOs; documented in Scalar | Pydantic models; no raw row leakage |
 | **Errors** | Machine-readable `code` + HTTP status | `422`, `409`, consistent JSON error body |
 | **Persistence** | Alembic migrations; seeds for demo data | Indexes, FKs, idempotent seeds |
-| **Realtime** | WebSocket hub as Observer subscriber | Fan-out `MoistureLow`, alert events |
+| **Realtime** | WebSocket hub as Observer subscriber | Fan-out `reading.created`, `actuator.state_changed`, `alert.created` |
 | **Mapping** | Repository row → public DTO at the boundary | Drop internal columns before JSON |
 
 Treat WebSocket as **transport**, not a second domain layer. If `EventBus.publish` already exists, a `WebSocketSubscriber` listens and broadcasts JSON—domain rules stay in services.
@@ -74,7 +74,7 @@ HTTP serves pull queries with stable shapes; events drive push updates over the 
 **Invest now (Phase 12) when:**
 
 - Multiple UI panels depend on the same endpoints.
-- Operators need live alerts without polling.
+- Operators need live updates while the socket is up. The Phase 5 readings poll remains the fallback when the socket is down.
 - Schema has grown across many incremental migrations—indexes and FKs matter.
 
 **Defer or keep minimal when:**
@@ -230,7 +230,7 @@ In the lab you express the same idea with Pydantic/FastAPI status codes and wire
 | Phases 2–11 | Phase 12 |
 |-------------|----------|
 | Introduce pattern seams | Stabilize contracts around seams |
-| Polling may be fine | Prefer push for live operator views |
+| Polling may be fine | Prefer push while the socket is up; keep the Phase 5 readings poll as fallback when it is down |
 
 ---
 
@@ -277,10 +277,12 @@ Apply this hardening mindset to **your** greenhouse APIs, persistence, and realt
 | --------------------- | --------------------- |
 | ArenaTickets leaky dict / status demo | Stable Pydantic DTOs under `/api` only |
 | Seat-hold logic inside a socket handler | Alert rules stay in Phase 11 subscribers |
-| PA system / `WebSocketSubscriber` | Connection manager subscribed to `EventBus` |
+| PA system / `WebSocketSubscriber` | Dashboard connection manager subscribed to `EventBus`; fan-out `reading.created`, `actuator.state_changed`, `alert.created`. Not a device channel |
+| Device that posts a foreign payload straight into the database | Device HTTP calls the Phase 5 translator, then ingest. It does not invent a second reading type and it does not publish |
+| Broker client that parses and publishes on its own | Optional subscriber, started only when a broker URL is set, calls the same translator, then ingest. It does not invent a second reading type and it does not publish |
 | Hand-edited venue charts | Alembic indexes/FKs; gate `/dev` if needed |
 
-**Do / don’t:** **Do** broadcast `{ "type": "alert.created", ... }` from a hub that **subscribes**. **Don’t** insert `alerts` inside the WS handler, and don’t open sockets from use cases.
+**Do / don’t:** **Do** broadcast `reading.created`, `actuator.state_changed`, and `alert.created` from a hub that **subscribes**. Sensor cards apply `reading.created` and pause the Phase 5 readings poll while the socket is up; resume that poll when it is down. **Don’t** insert `alerts` inside the WS handler, don’t publish domain events from the device HTTP route or the MQTT subscriber, don’t open a device WebSocket, and don’t open sockets from use cases. The broker stays optional.
 
 ---
 

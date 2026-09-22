@@ -49,9 +49,9 @@ The adapter does not decide your meeting schedule—that is domain logic. It onl
 | Role | Responsibility | In Phase 5 lab |
 | ---- | -------------- | -------------- |
 | **Target (port)** | Interface the application expects | `SensorPort`, `ActuatorPort` |
-| **Adaptee** | Existing incompatible API | Vendor SDK, simulation driver |
-| **Adapter** | Translates calls and data | `LegacyCalEventAdapter`, vendor wrappers |
-| **Client** | Depends only on the port | Services that read sensors / drive actuators |
+| **Adaptee** | Existing incompatible API | Vendor stub payload, simulation driver, MQTT payload dict |
+| **Adapter** | Translates calls and data | Simulation, vendor-stub, and MQTT translators |
+| **Client** | Depends only on the port | One ingest writer (manual read, sampler, later device HTTP or broker) |
 
 Keep adapters **thin**: map fields, convert units, handle errors at the boundary. Irrigation rules and automation policies stay outside.
 
@@ -343,17 +343,17 @@ Add a `CsvDumpEventAdapter` that reads a multiline string `title,start_iso` and 
 
 ## Bridge to your lab
 
-Phase 5 wraps vendor or simulation device APIs behind ports. Keep adapters thin: translate, don’t decide irrigation policy.
+Phase 5 wraps vendor, simulation, or MQTT payloads behind ports. Keep adapters thin: translate, don’t decide irrigation policy. One ingest writer persists `sensor_readings` for a manual read, the simulation sampler, and (later) a device HTTP route or an optional broker.
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
-| `LegacyCalClient` (foreign shape) | Simulation SDK or vendor stub payload |
-| `EventSource` port | `SensorPort` (`read`) |
-| `LegacyCalEventAdapter` | `SimulationSensorAdapter` / `VendorStubSensorAdapter` |
+| `LegacyCalClient` (foreign shape) | Simulation driver, vendor stub payload, or an MQTT payload dict |
+| `EventSource` port | `SensorPort` (`read`) and `ActuatorPort` (`apply`) |
+| `LegacyCalEventAdapter` | `SimulationSensorAdapter` / `VendorStubSensorAdapter` / MQTT translator (`source` `mqtt`; no broker) |
 | `Event` (normalized) | `Reading` (value, unit, source, time) |
-| `AgendaService` | Reading application service + persist `sensor_readings` |
+| `AgendaService` | One ingest writer. Phase 12 may pass the same dict in from device HTTP or from the optional broker |
 
-**Do / don’t:** **Do** depend on `SensorPort` in application code. **Don’t** decide irrigation in an adapter (that is Strategy), and don’t leak vendor XML/JSON types into routers.
+**Do / don’t:** **Do** depend on `SensorPort` in application code, and sample only when tracking is on and the device protocol is simulation. **Don’t** decide irrigation in an adapter (that is Strategy), don’t open a broker socket in this phase, and don’t leak vendor XML/JSON types into routers. Sensor cards poll the latest stored reading until Phase 12.
 
 ---
 

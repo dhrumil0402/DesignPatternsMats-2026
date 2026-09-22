@@ -43,7 +43,7 @@ You build a **modular monolith**: one Python backend, PostgreSQL, and a React + 
 3. **Implement** from the matching lab **requirements** under `docs/phases/` (use the guided check only to verify shapes).
 4. **Reflect** — from Phase 2 onward, a short note in `docs/patterns/` helps you own the idea.
 
-Phases introduce topics **one at a time**. Early phases may use thin APIs and grow the schema with Alembic migrations. Phase 12 hardens routes, adds WebSockets, and tightens the schema—that is the **required course completion** point. Optional Phases 13–14 add dashboard polish and proof-and-demo rigor if you want to go further.
+Phases introduce topics **one at a time**. Early phases may use thin APIs and grow the schema with Alembic migrations. Phase 12 hardens routes, adds dashboard WebSockets, tightens the schema, accepts direct device HTTP on the existing ingest path, and keeps the MQTT subscriber optional—that is the **required course completion** point. Optional Phases 13–14 add dashboard polish and proof-and-demo rigor if you want to go further.
 
 Treat guides as **coaching**, lab **requirements** as the assignment, and the guided check as extra help—not a complete solution. If something in a guide conflicts with a lab detail, follow the requirements for outcomes—and ask your instructor when unsure.
 
@@ -141,7 +141,7 @@ The playlist preview in Part 2 shows this with `PlayMode` strategies plugged int
 | 10    | Command          |
 | 11    | Observer         |
 
-Phase 12 (required) covers production API, WebSocket, and schema hardening—still design-minded, but not a new GoF label. **Optional** Phases 13–14 add dashboard polish and tests/docs/demo for students who want enrichment beyond the required track.
+Phase 12 (required) covers production API, WebSocket, and schema hardening, accepts direct device HTTP on the existing ingest path, and keeps the MQTT subscriber optional—still design-minded, but not a new GoF label. **Optional** Phases 13–14 add dashboard polish and tests/docs/demo for students who want enrichment beyond the required track.
 
 ---
 

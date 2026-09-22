@@ -12,6 +12,7 @@ Provide a **single read API** for the dashboard that aggregates existing tables 
 
 - Facade is the only collaborator the overview HTTP handler should call (not five repositories in the router).
 - Overview is scoped by **`location_id`**.
+- Latest readings may come from the Phase 5 sampler or from MQTT ingest, not only from `POST /read`. Include each reading device’s `tracking_enabled` and `sampling_interval_seconds`. Do not add a scheduler, MQTT client, or the device readings route in this phase.
 - Optional SQL view is allowed; not required.
 
 ## Outcome required at end of phase
@@ -25,7 +26,7 @@ Provide a **single read API** for the dashboard that aggregates existing tables 
 
 ## Prerequisites
 
-- Phase 6: automation rules + readings in DB.
+- Phase 6: automation rules + readings in DB (any Phase 5 ingress).
 - Devices, locations, zones exist.
 
 ---
@@ -62,7 +63,7 @@ No new table required.
 |-------|------|
 | `location` | `{ id: UUID, name: str }` |
 | `device_counts` | `{ sensor: int, actuator: int }` (extend with family counts if useful) |
-| `latest_readings` | `list` of `{ device_id: UUID, value: float, unit: str, recorded_at: datetime }` |
+| `latest_readings` | `list` of `{ device_id: UUID, value: float, unit: str, recorded_at: datetime, tracking_enabled: bool, sampling_interval_seconds: int }` |
 | `strategy_key` | `str \| None` |
 | `last_recommendation` | `{ action: str, reason: str } \| None` |
 
@@ -78,7 +79,7 @@ Define a read DTO that includes at least:
 
 - Location id and name.
 - Device counts (by role and/or family).
-- Latest readings summary (sensor id, value, unit, recorded_at).
+- Latest readings summary (sensor id, value, unit, recorded_at, `tracking_enabled`, `sampling_interval_seconds`). Rows may come from the sampler or MQTT ingest.
 - Active `strategy_key`.
 - Last recommendation (call Strategy evaluate internally or store last result — document which).
 

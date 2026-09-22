@@ -12,7 +12,7 @@ Complete the [requirements](requirements.md) first. Use this document if you are
 
 ```text
 domain/events/
-  events.py             # ReadingTaken, CommandExecuted, ...
+  events.py             # ReadingCreated (reading.created), ThresholdCrossed, CommandFailed, ...
   bus.py                # EventBus
 application/alerts/
   subscriber.py         # persist Alert from events
@@ -30,7 +30,8 @@ frontend/.../AlertsPanel.tsx
 
 ```text
 alerts(
-  id, location_id FK, severity, message, created_at, acknowledged_at NULL
+  id, location_id FK NULL, device_id FK NULL, severity, message,
+  event_type, status, created_at, acknowledged_at NULL
 )
 ```
 
@@ -51,20 +52,21 @@ class EventBus:
     def publish(self, event: object) -> None: ...
 
 class AlertSubscriber:
-    def on_reading(self, event: ReadingTaken) -> None: ...
-    def on_command(self, event: CommandExecuted) -> None: ...
+    def on_reading(self, event: ReadingCreated) -> None: ...  # type reading.created
+    def on_threshold(self, event: ThresholdCrossed) -> None: ...
+    def on_command(self, event: CommandFailed) -> None: ...
 ```
 
 **Publish sites** (application services, not routers):
 
-- After a persisted sensor read → `ReadingTaken`
-- After command executed / failed → `CommandExecuted` (or equivalent)
+- After a persisted ingest (manual read, sampler, or MQTT translation) → `ReadingCreated` / `reading.created` with `device_id`, `value`, `unit`, `source`, `recorded_at`. Skip publish when `tracking_enabled` is false.
+- After a threshold cross → `ThresholdCrossed`. After a command failure → `CommandFailed` (`command.failed`).
 
 **Composition root:** construct one `EventBus`, `subscribe` alert handlers, inject the **same** bus into reading and command services. Publishers must **not** import `AlertRepository`.
 
 Example rule: moisture below zone `low` → `severity="warning"` alert. Command `failed` → alert. Keep rules in the subscriber.
 
-**Check:** taking a reading that crosses the rule inserts an `alerts` row without the reading router calling the alerts repo.
+**Check:** taking a reading that crosses the rule inserts an `alerts` row without the reading router calling the alerts repo. Tracking off stores the reading and does not publish `reading.created`.
 
 ---
 
@@ -76,8 +78,11 @@ Example rule: moisture below zone `low` → `severity="warning"` alert. Command 
 {
   "id": "<uuid>",
   "location_id": "<uuid>",
+  "device_id": "<uuid>",
   "severity": "warning",
   "message": "Moisture below zone low",
+  "event_type": "threshold.crossed",
+  "status": "active",
   "created_at": "...",
   "acknowledged_at": null
 }

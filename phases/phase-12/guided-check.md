@@ -32,6 +32,7 @@ Inventory (adjust if you named paths slightly differently; keep one `/api` prefi
 | Locations | `GET/POST /api/locations`, `GET /api/locations/{id}` |
 | Devices | `GET /api/devices`, `GET /api/devices/{id}` |
 | Sensors | `POST /api/sensors/{id}/read`, `GET .../readings` |
+| Device HTTP | `GET /api/devices/{id}/sampling`, `POST /api/devices/{id}/readings` |
 | Automation | `PUT .../automation`, `POST .../evaluate` |
 | Overview | `GET /api/locations/{id}/overview` |
 | Commands | `POST /api/devices/{id}/commands`, `GET /api/commands` |
@@ -76,7 +77,35 @@ Minimal payload:
 { "type": "alert.created", "payload": { "id": "<uuid>", "severity": "warning", "message": "..." } }
 ```
 
-**Check:** creating an alert (via a reading that fires the rule) pushes a message to an open WS client without the WS handler inserting into `alerts`.
+Also broadcast `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`). Sensor cards apply that frame and stop the Phase 5 readings poll while the socket is connected; resume the poll when it is down.
+
+**Check:** creating an alert (via a reading that fires the rule) pushes a message to an open WS client without the WS handler inserting into `alerts`. A tracked simulation sensor changes the card without “Read now”. Tracking off does not emit `reading.created`. This socket is not an ESP32 channel.
+
+---
+
+## Step 3a — Device HTTP
+
+`GET /api/devices/{device_id}/sampling` returns the stored interval and tracking flag. `POST /api/devices/{device_id}/readings` body `{ "value": 0.41, "unit": "vwc" }` calls the Phase 5 translator with `source` `http`, then `ReadingIngest`. Unknown device: log and drop. Do not publish from the route. Do not add a device WebSocket.
+
+Sampling PATCH for `protocol=http` only updates the columns GET returns. The device posts on its own clock. The backend does not poll it. The sampler still skips non-simulation protocols.
+
+**Check:** GET then POST inserts a row with `source` `http` and, when tracking is on, a `reading.created` frame. Tracking off stores the row and does not publish. The course demo does not require this call.
+
+---
+
+## Step 3b — MQTT subscriber
+
+Compose **profile**: Mosquitto. A normal `docker compose up` does not start it. Subscriber starts only when a broker URL is set. Topic `greenhouse/devices/{device_id}/reading` → the same translator with `source` `mqtt` → `ReadingIngest`. Unknown device: log and drop.
+
+Sampling PATCH for `protocol=mqtt`, and only when a broker is configured, publishes a retained message on `greenhouse/devices/{device_id}/config`:
+
+```json
+{ "sampling_interval_seconds": 30, "tracking_enabled": true }
+```
+
+An `http` device uses GET instead of that retained message. Simulation devices keep using `SimulationSampler` and do not need the broker. Idempotent seed: one simulation sensor, interval `5`, `tracking_enabled` true.
+
+**Check:** course demo runs with the broker profile stopped and with no published MQTT payload. README smoke test, with the profile up, publishes one reading and a row appears when tracking is on.
 
 ---
 
@@ -95,8 +124,11 @@ Minimal payload:
 README (or `docs/` note):
 
 - REST lives under `/api`
-- `WS /ws` (path and JSON `type` field)
-- How to run backend + frontend + `alembic upgrade head`
+- `WS /api/ws` (dashboard only; path and JSON `type` field, including `reading.created`)
+- Device HTTP: `GET /api/devices/{device_id}/sampling` and `POST /api/devices/{device_id}/readings`
+- Optional MQTT `greenhouse/devices/{device_id}/reading` and retained `.../config`, and how to start the broker profile
+- How to run backend + frontend + `alembic upgrade head` without the broker
+- Simulation seed (5-second interval) is enough; ESP32 and Mosquitto are optional
 - Schema note: indexes / FKs that support live traffic
 
 **Check:** a classmate can start the stack from README without asking for the WS path.
@@ -107,9 +139,11 @@ README (or `docs/` note):
 
 - [ ] Consistent `/api` REST surface
 - [ ] Migrations + useful indexes applied
-- [ ] WS subscriber on the existing bus
-- [ ] UI live indicator
-- [ ] README documents REST + WS
+- [ ] WS subscriber on the existing bus; sensor cards follow `reading.created`
+- [ ] Device HTTP calls the translator then ingest; no device WebSocket
+- [ ] MQTT subscriber calls ingest only when a broker URL is set; retained config for `protocol=mqtt`
+- [ ] UI live indicator; Phase 5 poll only when the socket is down
+- [ ] README documents REST + dashboard WS + device HTTP + optional MQTT; simulation seed needs no hardware and no broker
 
 ---
 
@@ -121,6 +155,11 @@ README (or `docs/` note):
 | WS handler writes AlertRow | Persist in Observer subscriber; WS only broadcasts |
 | Use case imports WebSocket | Inject bus; hub is a subscriber |
 | No message on new alert | Subscribe hub at startup; publish `AlertCreated` after insert |
+| Card still polls while WS is up | Stop the Phase 5 readings poll on connect; resume on disconnect |
+| Device route or MQTT subscriber inserts rows itself | Call the Phase 5 translator, then `ReadingIngest` |
+| ESP32 connected on the dashboard socket | Device traffic is HTTP; `WS /api/ws` is the UI only |
+| Demo fails with no broker | Subscriber starts only when a broker URL is set |
+| Live frames while tracking is off | Ingest skips `reading.created` when `tracking_enabled` is false |
 
 ---
 
