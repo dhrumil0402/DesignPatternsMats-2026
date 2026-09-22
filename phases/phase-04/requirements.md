@@ -12,16 +12,19 @@ This phase introduces the **Builder** pattern for creating a valid **location co
 
 - Use **location** terminology in data and APIs.
 - Use **`location_id`** in zones and related records.
+- A device belongs to at most one zone. `devices.zone_id` is that assignment. On assign, set `devices.location_id` from the zone’s `location_id` in the same write. On unassign, clear both. The client does not send a location that can disagree with the zone.
 - Do **not** introduce `greenhouse_id` in this phase.
 - Keep the product context as smart greenhouse; only the relational resource naming changes to location.
+- `LocationConfigBuilder` only sets the location name, adds zones, and `build()` returns an unsaved config or raises `ConfigurationError`. Do not add `add_device`. Devices already exist from Phases 2–3, and a zone has no id until the config is saved. Assignment is a later update through its own service, not a rebuild of the location.
 
 ## Outcome required at end of phase
 
 - A Builder workflow can create one location with one or more zones.
 - Builder validation blocks invalid configurations before persistence.
 - A persisted location configuration can be retrieved by location id.
-- Dashboard has a configuration UI for creating location + zones.
-- API reference (Scalar) documents the location config endpoints and schemas.
+- A user can assign an existing device to a zone in that location, list the devices in that zone, and clear the assignment. Unassigned devices stay valid.
+- Dashboard has a configuration UI for creating location + zones, plus a zone picker on device cards.
+- API reference (Scalar) documents the location config endpoints, zone assignment, and the zone device list.
 
 ---
 
@@ -50,7 +53,8 @@ Implement the phase with clean layer separation:
 - **Application layer**
   - Defines request/response DTOs for location configuration.
   - Maps DTOs to Builder calls and maps persistence results back to DTOs.
-  - Orchestrates save/retrieve use cases through repositories.
+  - Orchestrates save/retrieve of the built config through repositories.
+  - A separate assignment service sets or clears `devices.zone_id` after the zone row exists. It does not call the builder.
 
 - **Infrastructure layer**
   - Owns ORM models and repository persistence logic.
@@ -76,9 +80,10 @@ yourpath\project\
 │   ├── application/locations/dto.py
 │   ├── application/locations/mappers.py
 │   ├── application/locations/config_service.py
-│   ├── infrastructure/persistence/models.py  # LocationRow, ZoneRow
+│   ├── application/locations/zone_assignment_service.py
+│   ├── infrastructure/persistence/models.py  # LocationRow, ZoneRow, devices.zone_id
 │   ├── infrastructure/persistence/location_repository.py
-│   └── interfaces/api/locations.py
+│   └── interfaces/api/locations.py           # config + zone device list + assign
 └── frontend/src/components/config/LocationConfigWizard.tsx
 ```
 
@@ -105,7 +110,8 @@ ORM:
 | `zones.name` | `String(128)` |
 | `zones.moisture_threshold_low` / `_high` | `Numeric` (e.g. 5,4) stored as float in domain |
 | `zones.schedule` | JSONB |
-| `devices.location_id` | optional UUID FK, nullable |
+| `devices.zone_id` | nullable UUID FK → `zones.id`, `ON DELETE SET NULL`, indexed |
+| `devices.location_id` | nullable UUID FK; written only from the zone’s `location_id` when `zone_id` is set |
 
 API JSON:
 
@@ -131,8 +137,9 @@ Define the relational model needed for location configuration:
   - Zone name.
   - Moisture threshold low/high values.
   - Schedule payload (JSON).
-- Optional extension in this phase:
-  - `devices.location_id` nullable foreign key for future linking.
+- Device assignment columns on `devices`:
+  - `zone_id` nullable FK → `zones.id`, `ON DELETE SET NULL`, indexed.
+  - `location_id` nullable FK. Set it from the zone in the assignment write. Do not accept it as a separate client field.
 
 Validation and constraints expectations:
 
@@ -154,13 +161,13 @@ Use Alembic autogenerate from model changes:
   - `locations` table creation exists.
   - `zones` table creation exists.
   - FK is from `zones.location_id` to `locations.id`.
-  - Optional `devices.location_id` appears only if modeled.
+  - `devices.zone_id` and `devices.location_id` are nullable FKs. `zone_id` uses `ON DELETE SET NULL`.
 - Apply migration to the local database.
 
 Acceptance criteria:
 
 - `alembic current` points to the new revision.
-- Database inspection shows `zones.location_id`.
+- Database inspection shows `zones.location_id` and `devices.zone_id`.
 - Migration chain is forward-only; no edits to already-applied revisions.
 
 ## Step 3 — Builder domain behavior
@@ -182,6 +189,7 @@ Acceptance criteria:
 
 - Invalid config is rejected before any database write.
 - Valid config builds deterministically.
+- The builder has no method that attaches a device. Assignment happens only after `zones.id` exists.
 
 ## Step 4 — DTO contracts
 
@@ -240,6 +248,24 @@ Acceptance criteria:
 - Endpoints visible in Scalar.
 - Endpoints return DTO schemas exactly as defined.
 
+## Step 6b — Assign a device to a zone
+
+After the zone row exists, a separate assignment service (not the builder) updates the device:
+
+- `PATCH /api/devices/{id}/zone` body `{ "zone_id": "<uuid>" | null }`.
+- When `zone_id` is set, load the zone and write `devices.zone_id` plus `devices.location_id` copied from `zones.location_id` in the same transaction.
+- When `zone_id` is null, clear both columns.
+- `GET /api/locations/{location_id}/zones/{zone_id}/devices` lists sensors and actuators with that `zone_id`. 404 if the zone is missing or does not belong to that location.
+- 404 if the device or zone is missing. Do not accept a separate `location_id` in the body.
+
+Acceptance criteria:
+
+- Assigning two devices to zone 2 makes the zone list return only those devices.
+- A device assigned to another zone is absent from that list.
+- Unassign clears `zone_id` and `location_id`.
+- Scalar documents both routes.
+- The PATCH handler does not call `LocationConfigBuilder`.
+
 ## Step 7 — Frontend configuration wizard
 
 Implement a dashboard config wizard in the configuration section:
@@ -248,6 +274,7 @@ Implement a dashboard config wizard in the configuration section:
 - Collect one or more zones with thresholds and schedule.
 - Submit to location config create endpoint.
 - Display saved result (including returned location id and zone list).
+- On device cards, a zone picker calls the assign endpoint and shows the current zone name. Empty state: the device is unassigned. The picker is available after a location config exists; it does not run inside `build()`.
 
 UI requirements:
 
@@ -258,6 +285,7 @@ UI requirements:
 Acceptance criteria:
 
 - User can create a location config end-to-end from UI.
+- User can place two devices in one zone and see them on that zone’s list.
 - UI reflects server validation failures clearly.
 
 ## Step 8 — Test requirements
@@ -273,6 +301,10 @@ Minimum test set:
   - Create config persists location + zones.
   - Get config returns expected structure with `location_id`.
   - Invalid payload handled with 400.
+  - Assign two devices to one zone; the zone device list returns only those devices.
+  - A device in another zone is absent from that list.
+  - Unassign clears `zone_id` and `location_id`.
+  - Builder tests do not call the assignment service.
 
 Migration checks:
 
@@ -292,6 +324,7 @@ Update learning docs:
   - Why this is Builder (not Factory Method / Abstract Factory).
   - Where validation lives.
   - Why `location_id` naming is used.
+  - Why device assignment is not a builder method.
 
 Update phase references where needed:
 
@@ -304,11 +337,12 @@ Update phase references where needed:
 Phase 4 is done when all items below are true:
 
 - Database has `locations` and `zones` with FK `zones.location_id`.
-- Builder enforces required validations before persistence.
+- `devices.zone_id` exists. Assignment copies `location_id` from the zone and clears both on unassign.
+- Builder enforces required validations before persistence and does not attach devices.
 - Location config DTOs exist and are used by API.
-- Endpoints for create/read location config are live and documented in Scalar.
-- UI wizard can create and display persisted config.
-- Automated tests cover builder validation and API persistence path.
+- Endpoints for create/read location config, zone assignment, and the zone device list are live and documented in Scalar.
+- UI wizard can create and display persisted config. Device cards can assign a zone.
+- Automated tests cover builder validation, API persistence, and zone assignment.
 - Documentation references `location_id` consistently.
 
 ---
@@ -320,14 +354,18 @@ Phase 4 is done when all items below are true:
 - Using `greenhouse_id` in any new schema or endpoint.
 - Treating migration generation as optional manual SQL.
 - Returning partially saved data on transactional failure.
+- Adding `add_device` to `LocationConfigBuilder`, or rebuilding the location when a device moves.
+- Storing a `location_id` that does not match the assigned zone.
+- Treating an unassigned device as a member of every zone.
 
 ---
 
 ## Handoff to next phases
 
-- Phase 5 (Adapter) can start consuming persisted location/zone context.
-- Phase 6 (Strategy) should evaluate automation per location id using zone thresholds.
-- Later overview and alert flows should preserve `location_id` as the top-level scope key.
+- Phase 5 (Adapter) stores readings on `device_id`. Sensor cards may show the zone name. Sampling does not filter by zone.
+- Phase 6 (Strategy) evaluates each zone using that zone’s thresholds and only the sensors whose `zone_id` matches. Do not use a global latest reading from an unassigned device.
+- Phase 7 overview lists zones with their assigned devices and those devices’ latest readings.
+- Later alert flows copy `location_id` and `zone_id` from the device. Unassigned devices leave both null.
 
 → [Phase 5 — Adapter (requirements)](../phase-05/requirements.md) · [guided check](../phase-05/guided-check.md)
 

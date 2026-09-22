@@ -487,16 +487,17 @@ In `skyledger_builder.py`, add a rejection case that calls `add_leg("HEL", "HEL"
 
 ## Bridge to your lab
 
-Phase 4 uses Builder for a **location configuration** with zones: guided steps, then `build()` before persistence. Naming in the course model prefers **location** / **`location_id`**.
+Phase 4 uses Builder for a **location configuration** with zones: guided steps, then `build()` before persistence. Devices already exist. Assignment is a later update, not a builder step. Naming in the course model prefers **location** / **`location_id`**.
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
 | `FlightLeg` | Zone (thresholds, not airports) |
 | `Itinerary` | Location configuration aggregate |
-| `ItineraryBuilder.build()` | `LocationConfigBuilder.build()` (validate, then return) |
+| `ItineraryBuilder.build()` | `LocationConfigBuilder.build()` (validate, then return). No `add_device` |
 | SkyLedger itinerary id | `location_id` — never `greenhouse_id` |
+| A passenger added after the ticket exists | Assign a device after the zone row exists: set `zone_id` and copy `location_id` from that zone, or clear both |
 
-**Do / don’t:** **Do** persist **after** a successful `build()`, not inside the builder. **Don’t** implement flight legs in the project; apply SkyLedger’s validation mindset to the lab’s types and endpoints.
+**Do / don’t:** **Do** persist **after** a successful `build()`, not inside the builder. **Don’t** add `add_device` to the builder, and don’t implement flight legs in the project.
 
 ---
 

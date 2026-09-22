@@ -43,7 +43,7 @@
 >
 > _(Write your answer here.)_
 
-5. Where do the numbers in `LocationAutomationContext` (or your equivalent) come from? Latest moisture may already be in `sensor_readings` from a manual read, the simulation sampler, or MQTT translation — why does this phase not add a scheduler or a broker? Why must strategies receive a plain context object, not SQLAlchemy rows or FastAPI types? Why are thresholds read from **zones**, not hardcoded in the strategy class?
+5. Where do the numbers in `LocationAutomationContext` (or your equivalent) come from? The service builds **one context per zone**. Latest moisture may already be in `sensor_readings` from a manual read, the simulation sampler, or MQTT translation, but only from sensors with that zone’s `zone_id` — why must an empty zone not use an unassigned device? Why does this phase not add a scheduler or a broker? Why must strategies receive a plain context object, not SQLAlchemy rows or FastAPI types? Why are thresholds read from **zones**, not hardcoded in the strategy class?
 
 > [!NOTE]
 > ***Your Answer***

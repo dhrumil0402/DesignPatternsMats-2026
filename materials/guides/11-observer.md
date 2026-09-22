@@ -49,7 +49,7 @@ Observer (or an in-process **event bus**) is that subscription list for domain e
 | ---- | -------------- | --------------- |
 | **Subject / EventBus** | `subscribe`, `unsubscribe`, `publish` | `EventBus` |
 | **Observer / Subscriber** | Reacts to events | `AlertPersistenceSubscriber`, … |
-| **Event** | Immutable payload | `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`); threshold-crossed; command-failed |
+| **Event** | Immutable payload | `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`, `zone_id` from the device or null); threshold-crossed; command-failed |
 | **Publisher** | Raises events after domain action | Reading ingest, command invoker |
 
 Phase 12 adds a **WebSocket subscriber**—same bus, different transport. Do not rebuild pub/sub inside the socket layer.
@@ -361,11 +361,11 @@ Phase 11 introduces in-process pub/sub for readings/events → alerts, metrics, 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
 | `BidSubject` / `AuctionService` | Application services that **publish** after persist |
-| `BidPlaced` | `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`); also threshold-crossed and command-failed |
+| `BidPlaced` | `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`, and `zone_id` copied from the device); also threshold-crossed and command-failed |
 | `LiveBoard` / `AuditLog` / `WatcherNotifier` | `AlertSubscriber` (and optional metrics) |
 | Observer list on the subject | `EventBus.subscribe` / `publish` |
 
-**Do / don’t:** **Do** publish `reading.created` from ingest only when `tracking_enabled` is true. Manual read, the sampler, and MQTT translation share that publish. Wire the bus once in the composition root; publishers must not import `AlertRepository`. **Don’t** open WebSockets in this phase (the feed polls; `realtime.ts` is a stub), and don’t call alert persistence from the reading router.
+**Do / don’t:** **Do** publish `reading.created` from ingest only when `tracking_enabled` is true, and copy `zone_id` from the device at publish time. Leave `zone_id` null when the device is unassigned. Manual read, the sampler, and MQTT translation share that publish. Wire the bus once in the composition root; publishers must not import `AlertRepository`. **Don’t** open WebSockets in this phase (the feed polls; `realtime.ts` is a stub), don’t invent a `zone_id` for an unassigned device, and don’t call alert persistence from the reading router.
 
 ---
 

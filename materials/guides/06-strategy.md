@@ -339,10 +339,10 @@ Phase 6 uses Strategy for automation decision policies. Keep “decide” separa
 | --------------------- | --------------------- |
 | `ShippingStrategy.quote` / `decide` | `AutomationStrategy.decide(context)` |
 | `StandardShipping` / `ExpressShipping` | Conservative vs aggressive moisture (lab keys) |
-| `Parcel` (input to the algorithm) | `LocationAutomationContext` (latest readings + zone band) |
-| `CheckoutService` picking a strategy | Automation service: load key from DB, build context, call `decide` |
+| `Parcel` (input to the algorithm) | One `LocationAutomationContext` per zone (that zone’s band + moisture from sensors with that `zone_id`) |
+| `CheckoutService` picking a strategy | Automation service: load key from DB, build one context per zone, call `decide`. The evaluate result stays one `action` and `reason` |
 
-**Do / don’t:** **Do** build context from persisted readings and `zones` (not hardcoded thresholds). **Don’t** import SQLAlchemy into strategy classes, and don’t run pumps inside `decide()` — Command is Phase 10.
+**Do / don’t:** **Do** build each context from persisted readings of sensors in that zone and from that zone’s thresholds (not hardcoded numbers). An empty zone does not use an unassigned device. **Don’t** import SQLAlchemy into strategy classes, and don’t run pumps inside `decide()` — Command is Phase 10.
 
 ---
 

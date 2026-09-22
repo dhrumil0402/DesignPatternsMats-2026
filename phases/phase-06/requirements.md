@@ -10,8 +10,9 @@ Add **pluggable automation strategies** that decide irrigation (or equivalent) f
 
 ## Scope and naming rules
 
-- Evaluate **per `location_id`**, using `zones` thresholds from Phase 4 and `sensor_readings` from Phase 5.
-- Those readings may come from a manual read, the simulation sampler, or a translated MQTT payload. Do not assume a row exists only after `POST /read`. Do not add a scheduler, sampling UI, MQTT client, or the device readings route in this phase.
+- Evaluate **per zone inside a `location_id`**, using that zone’s thresholds from Phase 4 and the latest moisture reading among sensors with that `devices.zone_id`.
+- A zone with no assigned moisture sensor does not borrow another device’s reading. Document the result (for example action `wait` and a reason such as “no moisture sensor in this zone”).
+- Those readings may come from a manual read, the simulation sampler, or a translated MQTT payload. Do not assume a row exists only after `POST /read`. Do not add a scheduler, sampling UI, MQTT client, a second zone-assignment API, or the device readings route in this phase.
 - Do not hard-code “if moisture < 0.3” in the API handler. Algorithms live in strategy classes behind a common interface.
 - `location_id` naming only — no `greenhouse_id`.
 
@@ -29,7 +30,7 @@ Add **pluggable automation strategies** that decide irrigation (or equivalent) f
 ## Prerequisites
 
 - Phase 5: `sensor_readings` populated by the shared ingest path (manual read, simulation sampler, or translated MQTT payload).
-- Phase 4: zones with moisture thresholds and `location_id`.
+- Phase 4: zones with moisture thresholds, and devices assigned with `zone_id`.
 - Alembic at Phase 5 head.
 
 ---
@@ -67,7 +68,7 @@ Domain:
 
 | Type | Fields |
 |------|--------|
-| `LocationAutomationContext` | `location_id: UUID`, latest moisture `float` (optional light `float`), zone `low`/`high` `float` |
+| `LocationAutomationContext` | `location_id: UUID`, `zone_id: UUID`, latest moisture `float` from sensors in that zone (optional light `float`), zone `low`/`high` `float` |
 | `Recommendation` | `action: str` (e.g. `irrigate` \| `wait`), `reason: str`, optional `score: float` |
 | Strategy key | `str` — `"conservative"` \| `"aggressive"` |
 
@@ -119,7 +120,7 @@ Acceptance criteria:
 
 ## Step 3 — Application orchestration
 
-Build context from SQL (latest reading per relevant sensor + zones for `location_id`). Do not pass raw ORM rows into strategy classes.
+Build one context per zone in the location: that zone’s low/high plus the latest reading among sensors with that `zone_id`. Do not pass raw ORM rows into strategy classes. Do not use an unassigned device’s reading.
 
 Map recommendation to a DTO.
 

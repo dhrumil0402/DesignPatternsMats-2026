@@ -17,7 +17,7 @@ Simulation devices also **generate values in code** on `sampling_interval_second
 - `sampling_interval_seconds` and `tracking_enabled` live on `devices`. The sampler uses them. Phase 2 may already store `sampling_interval_seconds` inside `default_config`; this phase promotes it to a column and backfills from that JSON.
 - `default_config.protocol` selects the sensor adapter: `simulation` or `mqtt`. Family `simulation` stays the in-process generator. Family `edge` with `protocol: mqtt` is the real-device kit. The vendor stub remains a translation exercise; it is not the ESP32 path.
 - When `tracking_enabled` is false, do not sample that device and do not publish a live reading event (Phase 11). A one-shot `POST /read` may still store a row.
-- Keep `location_id` as the site scope from Phase 4; do not introduce `greenhouse_id`.
+- Keep `location_id` as the site scope from Phase 4; do not introduce `greenhouse_id`. A device’s zone is `devices.zone_id`. Sensor cards may show that zone’s name. Do not add another assignment API. The sampler still selects by `protocol` and `tracking_enabled`, not by zone.
 - Domain ports must not depend on FastAPI, SQLAlchemy, or Pydantic. Do not open a broker socket in the domain.
 
 ## Outcome required at end of phase
@@ -296,7 +296,7 @@ Phase 5 is done when all items below are true:
 
 ## Handoff to next phases
 
-- Phase 6 (Strategy) will use latest readings plus zone thresholds per `location_id`. Those rows may come from a manual read, the simulation sampler, or (later) MQTT ingest. Do not add another sampler in Phase 6.
+- Phase 6 (Strategy) evaluates each zone with that zone’s thresholds and the latest moisture among sensors whose `zone_id` matches. Those rows may come from a manual read, the simulation sampler, or (later) MQTT ingest. Do not use a global latest reading from an unassigned device. Do not add another sampler in Phase 6.
 - Phase 9 (Decorator) wraps the **Phase 5 `ActuatorPort`**—do not skip the simulation actuator adapter.
 - Phase 11 (Observer) will publish `reading.created` from this ingest path when tracking is on.
 - Phase 12 may deliver this same payload dict on the device HTTP route or from the optional broker, and it pushes `reading.created` over the dashboard WebSocket, replacing the card poll. Do not add that route or a broker client here.

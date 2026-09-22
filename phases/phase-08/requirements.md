@@ -27,7 +27,8 @@ Persist **actuator lifecycle** per device. The API exposes current `state` and `
 ## Prerequisites
 
 - Phase 7 overview works; actuators exist from Phase 3 (`role=actuator`).
-- Sensor readings may already arrive without `POST /read` (sampler or MQTT). This phase does not own that pipeline and must not assume a reading exists only after a manual read. Do not add a broker client or the device readings route.
+- Sensor readings may already arrive without `POST /read` (sampler or MQTT). This phase does not own that pipeline and must not assume a reading exists only after a manual read.
+- Commands stay on `device_id`. The Phase 4 zone device list is where the user opens those controls. Do not add a second assignment API. Do not add a broker client or the device readings route.
 
 ---
 

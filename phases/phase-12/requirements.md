@@ -28,7 +28,7 @@ The database **already exists**. This phase focuses on:
 
 - Fresh `alembic upgrade head` from an empty database creates the full schema through this phase’s hardening revision.
 - No critical dashboard flow depends on in-memory-only stores.
-- WebSocket pushes at least `reading.created`, `actuator.state_changed`, `alert.created`.
+- WebSocket pushes at least `reading.created`, `actuator.state_changed`, `alert.created`. `reading.created` and `alert.created` include `zone_id` when the device has one so the zone device list can update. MQTT topics stay `greenhouse/devices/{device_id}/...`.
 - Sensor cards update from `realtime.ts` and stop the Phase 5 readings poll while the socket is connected. Polling remains the documented fallback when the socket is down.
 - UI connection indicator reflects WS status; EventFeed can subscribe instead of poll-only.
 - `protocol: http` devices use `GET /api/devices/{device_id}/sampling` and `POST /api/devices/{device_id}/readings`. Sampling PATCH for those devices only updates the columns that GET returns. The device applies the interval locally. The backend does not poll the ESP32 and does not push config.
@@ -77,7 +77,7 @@ WebSocket JSON envelope:
 | Field | Hint |
 |-------|------|
 | `type` | `str` — at least `reading.created`, `actuator.state_changed`, `alert.created` |
-| `payload` | `object` (event-specific; keep ids as UUID strings) |
+| `payload` | `object` (event-specific; keep ids as UUID strings; include `zone_id` on reading and alert payloads when the device has a zone) |
 
 Frontend:
 
@@ -143,7 +143,7 @@ Acceptance criteria:
 - Server: Observer subscriber → connection manager broadcast.
 - Message types include at least reading created, actuator state changed, alert created.
 - Client: implement `realtime.ts` (connect, parse JSON, reconnect/backoff can be minimal here; optional Phase 13 can deepen reconnect/backoff UX).
-- Sensor cards apply `reading.created` in place and **stop** the Phase 5 `GET .../readings` poll while the socket is connected. If the socket is down, resume that poll (document this fallback).
+- Sensor cards apply `reading.created` in place and **stop** the Phase 5 `GET .../readings` poll while the socket is connected. The zone device list updates from `reading.created` and `alert.created` when `zone_id` is present. If the socket is down, resume that poll (document this fallback).
 - EventFeed prefers WS; alert polling may remain as fallback (document which).
 
 Acceptance criteria:

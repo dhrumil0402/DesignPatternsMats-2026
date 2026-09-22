@@ -150,7 +150,8 @@ alerts
 | **Sampling config** | `sampling_interval_seconds` (default 300, minimum 5), `tracking_enabled` (default true). Columns are the source of truth after Phase 5 backfills interval from `default_config` | 5 |
 | **I/O (read / apply)** | `SensorPort` + `ActuatorPort`. Simulation sampler records enabled simulation devices when the interval has elapsed. Phase 12 device HTTP and the optional MQTT subscriber call the same ingest. Vendor stub stays a translation exercise | 5 (sensors, sampler, MQTT translate, actuator stub); 9–10 decorate actuator port; 12 HTTP + optional broker |
 | **Live UI** | Ingest publishes `reading.created` only when tracking is on. Phase 12 dashboard WebSocket fans that out. Sensor cards poll latest readings until then | 11 publish; 12 push |
-| **Business logic** | Strategy, State, Command, Observer use **persisted** readings and state—not GPIO, a broker client, or vendor SDKs | 6–12 |
+| **Zone assignment** | `devices.zone_id` (at most one zone). `location_id` is copied from that zone. Builder does not attach devices. `PATCH /api/devices/{id}/zone` and the zone device list | 4 |
+| **Business logic** | Strategy uses each zone’s thresholds and sensors with that `zone_id`. Overview and alerts follow the same assignment. State and Command stay on `device_id` | 6–12 |
 
 **Terminology map**
 

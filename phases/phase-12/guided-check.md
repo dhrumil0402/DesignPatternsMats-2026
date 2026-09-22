@@ -77,7 +77,7 @@ Minimal payload:
 { "type": "alert.created", "payload": { "id": "<uuid>", "severity": "warning", "message": "..." } }
 ```
 
-Also broadcast `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`). Sensor cards apply that frame and stop the Phase 5 readings poll while the socket is connected; resume the poll when it is down.
+Also broadcast `reading.created` (`device_id`, `value`, `unit`, `source`, `recorded_at`, `zone_id` when assigned). Sensor cards apply that frame and stop the Phase 5 readings poll while the socket is connected; resume the poll when it is down. The zone device list updates from frames that include `zone_id`. MQTT topics stay per `device_id`.
 
 **Check:** creating an alert (via a reading that fires the rule) pushes a message to an open WS client without the WS handler inserting into `alerts`. A tracked simulation sensor changes the card without “Read now”. Tracking off does not emit `reading.created`. This socket is not an ESP32 channel.
 

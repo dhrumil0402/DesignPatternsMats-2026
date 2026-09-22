@@ -31,11 +31,12 @@ backend/src/
 ├── application/locations/
 │   ├── dto.py
 │   ├── mappers.py
-│   └── config_service.py
+│   ├── config_service.py
+│   └── zone_assignment_service.py
 ├── infrastructure/persistence/
-│   ├── models.py               # LocationRow, ZoneRow
+│   ├── models.py               # LocationRow, ZoneRow, devices.zone_id
 │   └── location_repository.py
-└── interfaces/api/locations.py
+└── interfaces/api/locations.py # config, assign, zone device list
 frontend/src/components/config/LocationConfigWizard.tsx
 ```
 
@@ -59,14 +60,14 @@ Confirm `/api/devices` and dashboard families still work.
 
 **`ZoneRow`:** `id`, **`location_id`** FK → `locations.id` (`ondelete="CASCADE"`), `name`, `moisture_threshold_low/high` (numeric), `schedule` (JSONB). Index `ix_zones_location_id`.
 
-Optional: nullable `devices.location_id` FK.
+**`devices`:** nullable `zone_id` FK → `zones.id` (`ondelete="SET NULL"`, index) and nullable `location_id`. Assignment writes both; the client sends only `zone_id`.
 
 ```powershell
 docker compose exec backend alembic revision --autogenerate -m "locations_and_zones"
 docker compose exec backend alembic upgrade head
 ```
 
-**Check:** `\d zones` shows **`location_id`**, not `greenhouse_id`.
+**Check:** `\d zones` shows **`location_id`**, not `greenhouse_id`. `\d devices` shows nullable `zone_id`.
 
 ---
 
@@ -88,7 +89,7 @@ class LocationConfigBuilder:
         ...  # reject empty name, zero zones, low >= high, thresholds outside 0–1
 ```
 
-**Check:** invalid configs never reach the repository.
+**Check:** invalid configs never reach the repository. The builder has no `add_device`. Assignment is Step 6b, after the zone has an id.
 
 ---
 
@@ -157,9 +158,32 @@ Example create body:
 
 ---
 
+## Step 6b — Assign devices to a zone
+
+```python
+class ZoneAssignmentService:
+    def assign(self, device_id: UUID, zone_id: UUID | None) -> None:
+        ...  # zone_id set → copy zones.location_id; null → clear both
+    def list_devices(self, location_id: UUID, zone_id: UUID) -> list[Device]:
+        ...
+```
+
+| Method | Path |
+|--------|------|
+| PATCH | `/api/devices/{id}/zone` body `{ "zone_id": "<uuid>" }` or `{ "zone_id": null }` |
+| GET | `/api/locations/{location_id}/zones/{zone_id}/devices` |
+
+404 missing device, missing zone, or zone not in that location. Do not send `location_id` in the PATCH body. The handler must not call `LocationConfigBuilder`.
+
+**Check:** two devices assigned to zone 2 are the only rows in that list. Unassign clears `zone_id` and `location_id`.
+
+---
+
 ## Step 7 — Frontend wizard
 
 Mount in `#config`. Collect location name + dynamic zone list; POST create; show returned id and zones. Inline validation + API error banner. Tailwind cards from earlier phases.
+
+Device cards: zone picker calling PATCH, showing the zone name or an unassigned empty state. The picker runs after save, not inside `build()`.
 
 Types in `api.ts` must match JSON keys (`location_id`, not `greenhouse_id`).
 
@@ -171,6 +195,8 @@ Types in `api.ts` must match JSON keys (`location_id`, not `greenhouse_id`).
 - `test_build_requires_name` / `test_build_requires_zones`
 - `test_build_rejects_invalid_thresholds`
 - Optional API: POST 201 + GET structure with `location_id`
+- `test_assign_devices_to_zone`
+- `test_unassign_clears_zone_and_location`
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -188,10 +214,11 @@ pytest tests -q
 ## Phase 4 completion checklist
 
 - [ ] `locations` + `zones`; FK `zones.location_id`
-- [ ] Builder validates before persist
-- [ ] POST/GET location config live in Scalar
-- [ ] Wizard creates and displays config
-- [ ] Builder tests pass
+- [ ] `devices.zone_id`; assign copies `location_id`; unassign clears both
+- [ ] Builder validates before persist and does not attach devices
+- [ ] POST/GET location config, PATCH zone, and zone device list live in Scalar
+- [ ] Wizard creates config; device cards assign a zone
+- [ ] Builder and assignment tests pass
 - [ ] Pattern doc written
 
 ---
@@ -204,12 +231,14 @@ pytest tests -q
 | `greenhouse_id` in migration | Rename models; regenerate |
 | 400 on POST | Read `detail` — thresholds or empty zones |
 | Zones missing on GET | Load relationship after commit |
+| Assign sets a mismatched location | Copy `location_id` from the zone row in the same write |
+| Builder test touches devices | Keep assignment in `ZoneAssignmentService` |
 
 ---
 
 ## Non-goals
 
-Assigning every device to a location; strategy execution (Phase 6); edit/delete UI (stretch).
+Requiring every device to be assigned; putting `add_device` on the builder; strategy execution (Phase 6); edit/delete of the location config (stretch).
 
 ---
 

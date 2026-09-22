@@ -30,7 +30,7 @@ frontend/.../AlertsPanel.tsx
 
 ```text
 alerts(
-  id, location_id FK NULL, device_id FK NULL, severity, message,
+  id, location_id FK NULL, zone_id FK NULL, device_id FK NULL, severity, message,
   event_type, status, created_at, acknowledged_at NULL
 )
 ```
@@ -40,7 +40,7 @@ alembic revision --autogenerate -m "alerts"
 alembic upgrade head
 ```
 
-**Check:** table exists; `location_id` FK is valid (not `greenhouse_id`).
+**Check:** table exists; `location_id` and `zone_id` FKs are valid (not `greenhouse_id`). `zone_id` is nullable.
 
 ---
 
@@ -59,8 +59,8 @@ class AlertSubscriber:
 
 **Publish sites** (application services, not routers):
 
-- After a persisted ingest (manual read, sampler, or MQTT translation) → `ReadingCreated` / `reading.created` with `device_id`, `value`, `unit`, `source`, `recorded_at`. Skip publish when `tracking_enabled` is false.
-- After a threshold cross → `ThresholdCrossed`. After a command failure → `CommandFailed` (`command.failed`).
+- After a persisted ingest (manual read, sampler, or MQTT translation) → `ReadingCreated` / `reading.created` with `device_id`, `value`, `unit`, `source`, `recorded_at`, and `zone_id` when the device has one. Skip publish when `tracking_enabled` is false.
+- After a threshold cross → `ThresholdCrossed` with `location_id` and `zone_id` copied from the device (both null if unassigned). After a command failure → `CommandFailed` (`command.failed`) with the same ids.
 
 **Composition root:** construct one `EventBus`, `subscribe` alert handlers, inject the **same** bus into reading and command services. Publishers must **not** import `AlertRepository`.
 
@@ -72,12 +72,13 @@ Example rule: moisture below zone `low` → `severity="warning"` alert. Command 
 
 ## Step 3 — API and UI
 
-`GET /api/alerts?location_id=`
+`GET /api/alerts?location_id=&zone_id=`
 
 ```json
 {
   "id": "<uuid>",
   "location_id": "<uuid>",
+  "zone_id": "<uuid>",
   "device_id": "<uuid>",
   "severity": "warning",
   "message": "Moisture below zone low",

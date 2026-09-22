@@ -36,7 +36,7 @@
 
 ## B. This phase of the application
 
-4. What does `GET /api/locations/{location_id}/overview` return? Name the main pieces of the overview DTO (location, device counts, latest readings, strategy key, last recommendation). Each latest reading includes `tracking_enabled` and `sampling_interval_seconds`. Why may those rows come from the sampler or MQTT ingest, not only from `POST /read`? Why is overview scoped by `location_id`?
+4. What does `GET /api/locations/{location_id}/overview` return? Name the main pieces of the overview DTO (location, device counts of assigned devices, a `zones` list, strategy key, last recommendation). Each zone includes thresholds, its assigned devices, and those devices’ readings (`tracking_enabled`, `sampling_interval_seconds`). Why are unassigned devices omitted? Why may those readings come from the sampler or MQTT ingest, not only from `POST /read`? Why is overview scoped by `location_id`?
 
 > [!NOTE]
 > ***Your Answer***

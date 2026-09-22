@@ -66,7 +66,7 @@ def get_strategy(key: str) -> AutomationStrategy:
     ...  # unknown key → error before decide()
 ```
 
-`LocationAutomationContext`: `location_id`, latest moisture (and optional light), zone `low`/`high`.
+`LocationAutomationContext`: `location_id`, `zone_id`, latest moisture from sensors with that `zone_id` (and optional light), zone `low`/`high`. A zone with no moisture sensor does not use an unassigned device.
 
 `Recommendation`: `action` (e.g. `irrigate` | `wait`), `reason`, optional `score`.
 

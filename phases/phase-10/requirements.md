@@ -30,6 +30,7 @@ Encapsulate actuator actions as **command objects** with **auditable history** i
 - Phase 9: decorated ports + execution log.
 - Phase 8: transition guards and `allowed_commands`.
 - Sensor readings may arrive from the sampler or MQTT ingest, not only `POST /read`. Do not add a scheduler, MQTT client, or the device readings route in this phase.
+- Commands stay on `device_id`. The zone device list is where the user opens controls. Do not add a second assignment API.
 
 ---
 

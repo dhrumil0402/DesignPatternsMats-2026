@@ -12,12 +12,13 @@ Provide a **single read API** for the dashboard that aggregates existing tables 
 
 - Facade is the only collaborator the overview HTTP handler should call (not five repositories in the router).
 - Overview is scoped by **`location_id`**.
-- Latest readings may come from the Phase 5 sampler or from MQTT ingest, not only from `POST /read`. Include each reading device’s `tracking_enabled` and `sampling_interval_seconds`. Do not add a scheduler, MQTT client, or the device readings route in this phase.
+- Include a `zones` list. Each zone has id, name, thresholds, its assigned devices, and those devices’ latest readings (`tracking_enabled`, `sampling_interval_seconds`). Device counts count assigned devices only. Omit unassigned devices.
+- Latest readings may come from the Phase 5 sampler or from MQTT ingest, not only from `POST /read`. Do not add a scheduler, MQTT client, a second assignment API, or the device readings route in this phase.
 - Optional SQL view is allowed; not required.
 
 ## Outcome required at end of phase
 
-- `GET` overview for a location returns one DTO: latest readings, device counts, active strategy, last recommendation (computed or cached).
+- `GET` overview for a location returns one DTO: zones (devices and latest readings), device counts of assigned devices, active strategy, last recommendation (computed or cached).
 - Dashboard **Overview** page does one fetch and renders cards from that DTO.
 - Scalar documents the overview schema.
 - Pattern note at `docs/patterns/facade.md`.
@@ -62,8 +63,8 @@ No new table required.
 | Field | Hint |
 |-------|------|
 | `location` | `{ id: UUID, name: str }` |
-| `device_counts` | `{ sensor: int, actuator: int }` (extend with family counts if useful) |
-| `latest_readings` | `list` of `{ device_id: UUID, value: float, unit: str, recorded_at: datetime, tracking_enabled: bool, sampling_interval_seconds: int }` |
+| `device_counts` | `{ sensor: int, actuator: int }` of **assigned** devices (extend with family counts if useful) |
+| `zones` | `list` of `{ id, name, moisture_threshold_low, moisture_threshold_high, devices: [{ id, device_type, role, display_name }], latest_readings: [{ device_id, value, unit, recorded_at, tracking_enabled, sampling_interval_seconds }] }` |
 | `strategy_key` | `str \| None` |
 | `last_recommendation` | `{ action: str, reason: str } \| None` |
 
@@ -78,8 +79,8 @@ Path param: `location_id: UUID`.
 Define a read DTO that includes at least:
 
 - Location id and name.
-- Device counts (by role and/or family).
-- Latest readings summary (sensor id, value, unit, recorded_at, `tracking_enabled`, `sampling_interval_seconds`). Rows may come from the sampler or MQTT ingest.
+- Device counts of devices assigned to zones in this location.
+- A `zones` list: id, name, thresholds, assigned devices, and those devices’ latest readings (`tracking_enabled`, `sampling_interval_seconds`). Omit unassigned devices. Rows may come from the sampler or MQTT ingest.
 - Active `strategy_key`.
 - Last recommendation (call Strategy evaluate internally or store last result — document which).
 

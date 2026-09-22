@@ -360,12 +360,12 @@ Phase 7 introduces a façade so the dashboard overview does not stitch many repo
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
-| Transcoder + thumbnail + CDN + repo + notifier | Devices, latest readings, strategy, last recommendation |
+| Transcoder + thumbnail + CDN + repo + notifier | Zones, each with assigned devices and their readings, plus strategy and last recommendation |
 | `ClipPublishFacade` | `LocationOverviewFacade.get_overview(location_id)` |
-| `PublishResult` | `LocationOverviewDto` (stable JSON) |
+| `PublishResult` | `LocationOverviewDto` grouped by zone (stable JSON) |
 | ClipRiver HTTP handler calling five services | Overview router injects **only** the facade |
 
-**Do / don’t:** **Do** hide N+1 joins and subsystem calls behind one door. **Don’t** turn the facade into a warehouse of unrelated features, and don’t re-implement Strategy inside the overview method—delegate.
+**Do / don’t:** **Do** hide N+1 joins and subsystem calls behind one door, and group assigned devices and their readings under zones. **Don’t** include unassigned devices, turn the facade into a warehouse of unrelated features, or re-implement Strategy inside the overview method—delegate.
 
 ---
 
