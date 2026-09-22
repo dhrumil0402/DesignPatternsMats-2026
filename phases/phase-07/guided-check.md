@@ -25,8 +25,8 @@ frontend/.../OverviewPage.tsx   # or section in DashboardPage
 ```python
 class LocationOverviewDto(BaseModel):  # or equivalent
     location: LocationSummaryDto       # id, name
-    device_counts: dict[str, int]      # assigned sensors and actuators only
-    zones: list[ZoneOverviewDto]       # thresholds, assigned devices, their readings
+    device_counts: dict[str, int]      # e.g. sensor, actuator
+    latest_readings: list[ReadingSummaryDto]
     strategy_key: str | None
     last_recommendation: RecommendationDto | None
 ```
@@ -42,9 +42,8 @@ JSON field names must stay stable and match Scalar.
 ```python
 class LocationOverviewFacade:
     def get_overview(self, location_id: UUID) -> LocationOverviewDto:
-        # zones with assigned devices only (omit unassigned)
-        # each zone: thresholds, devices, latest readings (join sensor_readings)
-        # device counts of assigned devices
+        # latest readings (join sensor_readings)
+        # device counts by family/role
         # active strategy_key
         # last recommendation — delegate to automation service, do not re-implement Strategy
         ...
@@ -76,25 +75,14 @@ Example response:
 {
   "location": { "id": "<uuid>", "name": "Lab Site A" },
   "device_counts": { "sensor": 2, "actuator": 2 },
-  "zones": [
+  "latest_readings": [
     {
-      "id": "<uuid>",
-      "name": "Bench A",
-      "moisture_threshold_low": 0.3,
-      "moisture_threshold_high": 0.6,
-      "devices": [
-        { "id": "<uuid>", "device_type": "moisture", "role": "sensor", "display_name": "M1" }
-      ],
-      "latest_readings": [
-        {
-          "device_id": "<uuid>",
-          "value": 0.31,
-          "unit": "vwc",
-          "recorded_at": "...",
-          "tracking_enabled": true,
-          "sampling_interval_seconds": 300
-        }
-      ]
+      "device_id": "<uuid>",
+      "value": 0.31,
+      "unit": "vwc",
+      "recorded_at": "...",
+      "tracking_enabled": true,
+      "sampling_interval_seconds": 300
     }
   ],
   "strategy_key": "conservative",
@@ -102,7 +90,7 @@ Example response:
 }
 ```
 
-Each zone lists only assigned devices. Unassigned devices are omitted from `zones` and from `device_counts`. Readings may come from the sampler or MQTT ingest, not only from `POST /read`.
+Rows in `latest_readings` may come from the sampler or MQTT ingest, not only from `POST /read`.
 
 `#overview`: one `fetchOverview(locationId)`; cards for counts, readings, strategy, recommendation. Optional refresh button.
 

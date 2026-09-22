@@ -36,7 +36,7 @@
 
 ## B. This phase of the application
 
-4. Give at least two **domain events** you publish in this lab, including `reading.created` (only when `tracking_enabled` is true), a threshold-crossed event, and command-failed. Who publishes `reading.created`, and why do a manual read, the simulation sampler, and MQTT translation share that one ingest publish? Where does `zone_id` on that event come from, and what is it when the device is unassigned? Why must a publisher **not** import the alerts repository or the UI?
+4. Give at least two **domain events** you publish in this lab, including `reading.created` (only when `tracking_enabled` is true), a threshold-crossed event, and command-failed. Who publishes `reading.created`, and why do a manual read, the simulation sampler, and MQTT translation share that one ingest publish? Why must a publisher **not** import the alerts repository or the UI?
 
 > [!NOTE]
 > ***Your Answer***
@@ -57,7 +57,7 @@
 >
 > _(Write your answer here.)_
 
-7. Describe the must-demo path: a **tracked** low-moisture reading on an assigned device leads to an alert row that appears in the feed after poll, carrying that device’s `zone_id`. Which objects collaborate (reading pipeline → bus → subscriber → API → UI), and which object must **not** write the alert directly? What is stored, and what is not published, when `tracking_enabled` is false? What is `zone_id` on the alert when the device is unassigned?
+7. Describe the must-demo path: a **tracked** low-moisture reading leads to an alert row that appears in the feed after poll. Which objects collaborate (reading pipeline → bus → subscriber → API → UI), and which object must **not** write the alert directly? What is stored, and what is not published, when `tracking_enabled` is false?
 
 > [!NOTE]
 > ***Your Answer***

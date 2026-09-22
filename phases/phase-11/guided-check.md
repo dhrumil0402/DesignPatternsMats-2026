@@ -78,7 +78,6 @@ Example rule: moisture below zone `low` → `severity="warning"` alert. Command 
 {
   "id": "<uuid>",
   "location_id": "<uuid>",
-  "zone_id": "<uuid>",
   "device_id": "<uuid>",
   "severity": "warning",
   "message": "Moisture below zone low",

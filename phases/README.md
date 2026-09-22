@@ -107,7 +107,7 @@ flowchart LR
 |              01 | Layout, routes, health badge             |
 |              02 | Sensor list (from DB)                    |
 |              03 | Device family switcher + actuators list  |
-|              04 | Config wizard (persisted)                |
+|              04 | Config wizard, location list and delete, zone add/edit/delete |
 |              05 | Live readings on cards (from DB history) |
 |              06 | Strategy panel                           |
 |              07 | Overview page                            |

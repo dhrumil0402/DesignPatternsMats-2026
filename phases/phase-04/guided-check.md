@@ -60,7 +60,7 @@ Confirm `/api/devices` and dashboard families still work.
 
 **`ZoneRow`:** `id`, **`location_id`** FK → `locations.id` (`ondelete="CASCADE"`), `name`, `moisture_threshold_low/high` (numeric), `schedule` (JSONB). Index `ix_zones_location_id`.
 
-**`devices`:** nullable `zone_id` FK → `zones.id` (`ondelete="SET NULL"`, index) and nullable `location_id`. Assignment writes both; the client sends only `zone_id`.
+**`devices`:** nullable `zone_id` FK → `zones.id` (`ondelete="SET NULL"`, index) and nullable `location_id` (`ondelete="SET NULL"`). Assignment writes both; the client sends only `zone_id`. Deleting a zone still requires the service to clear `location_id` on those devices, because that column points at the location.
 
 ```powershell
 docker compose exec backend alembic revision --autogenerate -m "locations_and_zones"
@@ -134,7 +134,12 @@ Prefix `/api/locations`, tags `["locations"]`.
 | Method | Path | Status |
 |--------|------|--------|
 | POST | `/config` | 201 |
+| GET | `""` | 200, `[{ id, name }]`, empty `[]` |
 | GET | `/{location_id}/config` | 200 / 404 |
+| DELETE | `/{location_id}` | 204 / 404 |
+| POST | `/{location_id}/zones` | 201 / 400 / 404 |
+| PATCH | `/{location_id}/zones/{zone_id}` | 200 / 400 / 404 |
+| DELETE | `/{location_id}/zones/{zone_id}` | 204 / 400 last zone / 404 |
 
 Validation errors → 400.
 
@@ -154,7 +159,9 @@ Example create body:
 }
 ```
 
-**Check:** Scalar **locations** tag; every zone in the response has `location_id`.
+**Check:** Scalar **locations** tag; every zone in the response has `location_id`. List returns every created location. Delete removes zones with the location and leaves assigned devices with both ids null. These handlers do not call `LocationConfigBuilder`.
+
+Zone add/update bodies use `name`, `moisture_threshold_low`, `moisture_threshold_high`, and optional `schedule`. Same rules as `build()`. Delete of the only zone returns 400. Delete of a zone clears `zone_id` and `location_id` on devices that were in it before the row is removed (`ON DELETE SET NULL` clears `zone_id` only).
 
 ---
 
@@ -181,9 +188,11 @@ class ZoneAssignmentService:
 
 ## Step 7 — Frontend wizard
 
-Mount in `#config`. Collect location name + dynamic zone list; POST create; show returned id and zones. Inline validation + API error banner. Tailwind cards from earlier phases.
+Mount in `#configuration`. On load, `GET /api/locations` fills a location list that survives refresh. Create adds a location and selects it. Select loads `GET .../config`. Confirm before delete; deleting the selection clears the zone picker.
 
-Device cards: zone picker calling PATCH, showing the zone name or an unassigned empty state. The picker runs after save, not inside `build()`.
+On the selected location: add a zone, edit name, thresholds, and schedule, and delete a zone. The last zone cannot be deleted. Inline validation + API error banner. Tailwind cards from earlier phases.
+
+Device cards: zone picker calling PATCH. Options are every saved location’s zones, grouped by location and labeled `{location name} — {zone name}`, or an unassigned empty state. After a zone delete, devices that were in it show as unassigned. The picker runs after save, not inside `build()`.
 
 Types in `api.ts` must match JSON keys (`location_id`, not `greenhouse_id`).
 
@@ -197,6 +206,12 @@ Types in `api.ts` must match JSON keys (`location_id`, not `greenhouse_id`).
 - Optional API: POST 201 + GET structure with `location_id`
 - `test_assign_devices_to_zone`
 - `test_unassign_clears_zone_and_location`
+- `test_list_locations`
+- `test_delete_location_clears_assignments`
+- `test_add_zone_to_location`
+- `test_update_zone_rejects_invalid_thresholds`
+- `test_delete_zone_clears_assignments`
+- `test_delete_last_zone_is_rejected`
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -216,8 +231,9 @@ pytest tests -q
 - [ ] `locations` + `zones`; FK `zones.location_id`
 - [ ] `devices.zone_id`; assign copies `location_id`; unassign clears both
 - [ ] Builder validates before persist and does not attach devices
-- [ ] POST/GET location config, PATCH zone, and zone device list live in Scalar
-- [ ] Wizard creates config; device cards assign a zone
+- [ ] POST/GET location config, location list/delete, zone add/edit/delete, PATCH assign, and zone device list live in Scalar
+- [ ] Location list survives refresh; select and delete work; zones on the selection can be added, edited, and deleted
+- [ ] Wizard creates config; device cards assign a zone labeled with its location name
 - [ ] Builder and assignment tests pass
 - [ ] Pattern doc written
 
@@ -233,12 +249,14 @@ pytest tests -q
 | Zones missing on GET | Load relationship after commit |
 | Assign sets a mismatched location | Copy `location_id` from the zone row in the same write |
 | Builder test touches devices | Keep assignment in `ZoneAssignmentService` |
+| Delete leaves `location_id` set | Clear both device columns before the zone row is removed |
+| Last zone disappears | Return 400 and keep that zone |
 
 ---
 
 ## Non-goals
 
-Requiring every device to be assigned; putting `add_device` on the builder; strategy execution (Phase 6); edit/delete of the location config (stretch).
+Requiring every device to be assigned; putting `add_device` on the builder; calling the builder to list, delete, or edit a saved location or zone; renaming a location; replacing a whole saved config through `build()`; strategy execution (Phase 6).
 
 ---
 
