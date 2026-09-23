@@ -16,7 +16,7 @@ Tone matches course theory materials: professional theory first, then hands-on f
 ## How examples relate to the project
 
 - **Your product** is a smart greenhouse / location control system (sensors, actuators, automation, dashboard).
-- **Teaching examples** in Guides 02–14 use _other_ domains (courier notifications, flight itineraries, auctions, ArenaTickets, and so on) on purpose.
+- **Teaching examples** in Guides 02–14 use _other_ domains (courier notifications, ramen orders, auctions, ArenaTickets, and so on) on purpose.
 - That way you learn the pattern’s _shape_ without copying a ready-made solution into the Phase lab.
 - Each guide ends with **Bridge to your lab** — a mapping table (teaching type → greenhouse type) plus one do/don’t for the seam. Bridges do **not** contain FastAPI, Alembic, or React solutions. For routes, columns, and acceptance criteria, follow the phase **requirements** first; the guided check is optional extra help, not a complete solution.
 

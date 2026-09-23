@@ -6,7 +6,7 @@
 
 ## How to answer
 
-- Use your own wording. Do not paste teaching-example types (for example PDF/HTML export kits) as if they were your greenhouse classes.
+- Use your own wording. Do not paste teaching-example types (for example warrior/mage class kits) as if they were your greenhouse classes.
 - When a question asks about *this application*, refer to device families, provision, and the unified devices API from the lab.
 - Short answers are fine when the question is narrow. Write a few sentences when it asks you to explain or compare.
 - Write each answer inside the matching **Your Answer** note. Replace the placeholder; leave the question text unchanged.

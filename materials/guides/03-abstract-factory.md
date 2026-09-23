@@ -2,13 +2,13 @@
 
 **Lab:** [Requirements](../../phases/phase-03/requirements.md) · [Guided check](../../phases/phase-03/guided-check.md) · [Questions](../../phases/phase-03/questions.md)
 
-## Chapter 3: "Export night at PageCraft"
+## Chapter 3: "Character creation at Ironspire"
 
-**PageCraft** sells analytics to publishers. Customers export a monthly package: a **cover page**, a **table of contents**, and the **report body**. Formats are either **PDF** or **HTML**. Mixing a PDF cover with an HTML body looks broken and fails compliance checks.
+**Ironspire** is a fantasy RPG. New heroes spawn with a class kit: a **weapon**, **armor**, and a **signature ability**. Classes are either **Warrior** or **Mage**. Mixing a mage staff with plate mail looks wrong and fails the class-set check.
 
-Last quarter someone wrote `if format == "pdf"` in five places and accidentally shipped an HTML TOC inside a PDF zip. Your mission is **Abstract Factory**: one factory produces a _consistent kit_ of related products.
+Last sprint someone wrote `if class_name == "warrior"` in five places and accidentally shipped plate mail on a mage. Your mission is **Abstract Factory**: one factory produces a _consistent kit_ of related products.
 
-Teaching domain here is export kits—not your greenhouse device families. The shape transfers; the class names do not.
+Teaching domain here is class kits—not your greenhouse device families. The shape transfers; the class names do not.
 
 ---
 
@@ -20,7 +20,7 @@ By the end of this guide you will be able to:
 - Explain when a _family_ of products must stay consistent
 - Distinguish Abstract Factory from Factory Method
 - Sketch factories, abstract products, and concrete families in code
-- Bridge the idea to Phase 3 without copying PageCraft types into the lab
+- Bridge the idea to Phase 3 without copying Ironspire types into the lab
 
 ---
 
@@ -34,9 +34,9 @@ By the end of this guide you will be able to:
 
 ### The problem in plain language
 
-Sometimes the hard part is not creating one object—it is ensuring **several objects stay consistent**. A PDF export needs a PDF cover, PDF table of contents, and PDF body. An HTML export needs the HTML variants. If each piece is chosen with its own `if format == ...`, nothing stops an HTML cover from riding next to a PDF TOC. The bug is silent until compliance—or a customer—rejects the package.
+Sometimes the hard part is not creating one object—it is ensuring **several objects stay consistent**. A warrior needs a warrior weapon, warrior armor, and a warrior ability. A mage needs the mage variants. If each piece is chosen with its own `if class_name == ...`, nothing stops a mage staff from riding next to plate mail. The bug is silent until the class-set check—or a player—rejects the loadout.
 
-Independent conditionals also multiply: a third format means editing every selection point. Copy-paste “reuse” of one family’s class into another family’s path is tempting and dangerous.
+Independent conditionals also multiply: a third class means editing every selection point. Copy-paste “reuse” of one family’s armor into another family’s path is tempting and dangerous.
 
 ### Analogy — interior design suites
 
@@ -62,25 +62,25 @@ Factory Method often appears **inside** concrete factories: `create_sensor()` ma
 sequenceDiagram
   participant Client
   participant Factory as AbstractFactory
-  participant Cover
-  participant Toc
-  participant Report
-  Client->>Factory: pick PdfExportKitFactory once
-  Client->>Factory: create_cover(title)
-  Factory-->>Cover: PdfCover
-  Client->>Factory: create_toc(sections)
-  Factory-->>Toc: PdfToc
-  Client->>Factory: create_report(sections)
-  Factory-->>Report: PdfReport
+  participant Weapon
+  participant Armor
+  participant Ability
+  Client->>Factory: pick WarriorKitFactory once
+  Client->>Factory: create_weapon(hero)
+  Factory-->>Weapon: IronGreatsword
+  Client->>Factory: create_armor()
+  Factory-->>Armor: PlateMail
+  Client->>Factory: create_ability()
+  Factory-->>Ability: Cleave
 ```
 
-The client never names `PdfCover` directly—it only knows `Cover`. The factory choice at the start **commits** the whole session to one family.
+The client never names `IronGreatsword` directly—it only knows `Weapon`. The factory choice at the start **commits** the whole session to one family.
 
 ### When to use / when to skip
 
 **Use Abstract Factory when:**
 
-- Products naturally group into **families** that must not be mixed (simulation vs hardware, PDF vs HTML, Windows vs macOS widgets).
+- Products naturally group into **families** that must not be mixed (simulation vs hardware, warrior vs mage kits, Windows vs macOS widgets).
 - The application configures the environment once and then creates many related objects.
 - You want compile-time or startup-time guarantees about consistency.
 
@@ -104,105 +104,92 @@ The client never names `PdfCover` directly—it only knows `Cover`. The factory 
 
 ## 1. The sticky problem
 
-Exporters need a matching kit: cover + TOC + report, all PDF or all HTML. If each piece is chosen with its own `if`, nothing stops an HTML cover from riding next to a PDF TOC.
+Character creation needs a matching kit: weapon + armor + ability, all warrior or all mage. If each piece is chosen with its own `if`, nothing stops a mage staff from riding next to plate mail.
 
 ### 1.1 Smell: each piece chosen independently
 
 ```python
 # Smell: related products selected with independent conditionals
-def export_package(fmt: str, title: str, sections: list[str]) -> dict:
-    if fmt == "pdf":
-        cover = PdfCover(title)
-        toc = PdfToc(sections)
-        body = PdfReport(sections)
-    elif fmt == "html":
-        cover = HtmlCover(title)
-        # Bug waiting to happen: someone reuses PdfToc "because it already works"
-        toc = PdfToc(sections)
-        body = HtmlReport(sections)
+def equip_hero(class_name: str, hero: str) -> dict:
+    if class_name == "warrior":
+        weapon = IronGreatsword(hero)
+        armor = PlateMail()
+        ability = Cleave()
+    elif class_name == "mage":
+        weapon = OakStaff(hero)
+        # Bug waiting to happen: someone reuses PlateMail "because it already works"
+        armor = PlateMail()
+        ability = Fireball()
     else:
-        raise ValueError(fmt)
-    return {"cover": cover.render(), "toc": toc.render(), "body": body.render()}
+        raise ValueError(class_name)
+    return {
+        "weapon": weapon.describe(),
+        "armor": armor.describe(),
+        "ability": ability.describe(),
+    }
 ```
 
-**Root cause:** Related products are selected with independent conditionals. Nothing enforces “all PDF” or “all HTML.”
+**Root cause:** Related products are selected with independent conditionals. Nothing enforces “all warrior” or “all mage.”
 
 ### 1.2 Runnable problem demo
 
-> **Follow along:** Save as `pagecraft_before.py`, then run `python pagecraft_before.py`.
+> **Follow along:** Save as `ironspire_before.py`, then run `python ironspire_before.py`.
 
 ```python
-"""Problem demo: mismatched export kit — HTML cover + PDF TOC."""
+"""Problem demo: mismatched class kit — mage weapon + warrior armor."""
 
 
-class PdfCover:
-    def __init__(self, title: str) -> None:
-        self.title = title
+class OakStaff:
+    def __init__(self, hero: str) -> None:
+        self.hero = hero
 
-    def render(self) -> str:
-        return f"[PDF cover] {self.title}"
-
-
-class PdfToc:
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
-
-    def render(self) -> str:
-        return "[PDF TOC] " + " | ".join(self.sections)
+    def describe(self) -> str:
+        return f"[Mage weapon] Oak Staff — for {self.hero}"
 
 
-class HtmlCover:
-    def __init__(self, title: str) -> None:
-        self.title = title
-
-    def render(self) -> str:
-        return f"<h1>{self.title}</h1>"
+class PlateMail:
+    def describe(self) -> str:
+        return "[Warrior armor] Plate Mail"
 
 
-class HtmlReport:
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
-
-    def render(self) -> str:
-        return "".join(f"<p>{s}</p>" for s in self.sections)
+class Fireball:
+    def describe(self) -> str:
+        return "[Mage ability] Fireball"
 
 
-def export_package_buggy(title: str, sections: list[str]) -> None:
-    # Accidental mix: HTML cover + PDF TOC + HTML body
-    cover = HtmlCover(title)
-    toc = PdfToc(sections)  # wrong family — still "works"
-    body = HtmlReport(sections)
-    print(cover.render())
-    print(toc.render())
-    print(body.render())
-    print("PAIN: mixed HTML cover with PDF TOC — compliance will reject this kit")
+def equip_hero_buggy(hero: str) -> None:
+    # Accidental mix: mage weapon + warrior armor + mage ability
+    weapon = OakStaff(hero)
+    armor = PlateMail()  # wrong family — still "works"
+    ability = Fireball()
+    print(weapon.describe())
+    print(armor.describe())
+    print(ability.describe())
+    print("PAIN: mixed mage weapon with warrior armor — the class set will reject this kit")
 
 
 if __name__ == "__main__":
-    export_package_buggy(
-        "March Analytics",
-        ["Traffic", "Revenue", "Retention"],
-    )
+    equip_hero_buggy("Lyra")
 ```
 
 **Expected output (problem):**
 
 ```text
-<h1>March Analytics</h1>
-[PDF TOC] Traffic | Revenue | Retention
-<p>Traffic</p><p>Revenue</p><p>Retention</p>
-PAIN: mixed HTML cover with PDF TOC — compliance will reject this kit
+[Mage weapon] Oak Staff — for Lyra
+[Warrior armor] Plate Mail
+[Mage ability] Fireball
+PAIN: mixed mage weapon with warrior armor — the class set will reject this kit
 ```
 
 ### What goes wrong when requirements change
 
-A third format (Markdown) means yet more independent branches. Copy-paste “reuse” of one family’s TOC into another family’s path is easy and silent. Tests must assert every combination instead of trusting one factory.
+A third class (Rogue) means yet more independent branches. Copy-paste “reuse” of one family’s armor into another family’s path is easy and silent. Tests must assert every combination instead of trusting one factory.
 
 ---
 
 ## 2. Pattern in practice
 
-The PageCraft runnable example below fixes the mixed-kit bug: pick one `ExportKitFactory` (PDF or HTML), then ask it for cover, TOC, and report. Every product comes from the same family by construction.
+The Ironspire runnable example below fixes the mixed-kit bug: pick one `ClassKitFactory` (Warrior or Mage), then ask it for weapon, armor, and ability. Every product comes from the same family by construction.
 
 ---
 
@@ -212,269 +199,249 @@ These pieces are explanatory. The full runnable file is in section 4.
 
 ### Step A — Abstract products
 
-Clients should depend on “something that can `render`,” not on PDF vs HTML markup.
+Clients should depend on “something that can `describe`,” not on warrior vs mage gear.
 
 ```python
 from abc import ABC, abstractmethod
 
 
-class Cover(ABC):
+class Weapon(ABC):
     @abstractmethod
-    def render(self) -> str:
-        """Product interface shared by every cover in every family."""
+    def describe(self) -> str:
+        """Product interface shared by every weapon in every family."""
         ...
 
 
-class Toc(ABC):
+class Armor(ABC):
     @abstractmethod
-    def render(self) -> str:
+    def describe(self) -> str:
         ...
 
 
-class Report(ABC):
+class Ability(ABC):
     @abstractmethod
-    def render(self) -> str:
+    def describe(self) -> str:
         ...
 ```
 
-### Step B — One concrete family (PDF)
+### Step B — One concrete family (Warrior)
 
-Products in a family share a visual/format language. Keep them together.
+Products in a family share a combat style. Keep them together.
 
 ```python
-class PdfCover(Cover):
-    def __init__(self, title: str) -> None:
-        self.title = title
+class IronGreatsword(Weapon):
+    def __init__(self, hero: str) -> None:
+        self.hero = hero
 
-    def render(self) -> str:
-        return f"[PDF cover] {self.title}"
-
-
-class PdfToc(Toc):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
-
-    def render(self) -> str:
-        return "[PDF TOC] " + " | ".join(self.sections)
+    def describe(self) -> str:
+        return f"[Warrior weapon] Iron Greatsword — for {self.hero}"
 
 
-class PdfReport(Report):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
+class PlateMail(Armor):
+    def describe(self) -> str:
+        return "[Warrior armor] Plate Mail"
 
-    def render(self) -> str:
-        return "[PDF body] " + " / ".join(self.sections)
+
+class Cleave(Ability):
+    def describe(self) -> str:
+        return "[Warrior ability] Cleave"
 ```
 
 ### Step C — Abstract factory + one concrete factory
 
-Creation methods travel together. A PDF factory never returns an HTML TOC.
+Creation methods travel together. A warrior factory never returns a mage ability.
 
 ```python
-class ExportKitFactory(ABC):
+class ClassKitFactory(ABC):
     @abstractmethod
-    def create_cover(self, title: str) -> Cover:
+    def create_weapon(self, hero: str) -> Weapon:
         ...
 
     @abstractmethod
-    def create_toc(self, sections: list[str]) -> Toc:
+    def create_armor(self) -> Armor:
         ...
 
     @abstractmethod
-    def create_report(self, sections: list[str]) -> Report:
+    def create_ability(self) -> Ability:
         ...
 
 
-class PdfExportKitFactory(ExportKitFactory):
-    def create_cover(self, title: str) -> Cover:
-        return PdfCover(title)
+class WarriorKitFactory(ClassKitFactory):
+    def create_weapon(self, hero: str) -> Weapon:
+        return IronGreatsword(hero)
 
-    def create_toc(self, sections: list[str]) -> Toc:
-        return PdfToc(sections)
+    def create_armor(self) -> Armor:
+        return PlateMail()
 
-    def create_report(self, sections: list[str]) -> Report:
-        return PdfReport(sections)
+    def create_ability(self) -> Ability:
+        return Cleave()
 ```
 
 ### Step D — Thin client that takes a factory
 
-The exporter never mixes families: one factory for the whole kit.
+The spawner never mixes families: one factory for the whole kit.
 
 ```python
-def export_package(factory: ExportKitFactory, title: str, sections: list[str]) -> None:
-    cover = factory.create_cover(title)
-    toc = factory.create_toc(sections)
-    body = factory.create_report(sections)
-    print(cover.render())
-    print(toc.render())
-    print(body.render())
+def equip_hero(factory: ClassKitFactory, hero: str) -> None:
+    weapon = factory.create_weapon(hero)
+    armor = factory.create_armor()
+    ability = factory.create_ability()
+    print(weapon.describe())
+    print(armor.describe())
+    print(ability.describe())
 ```
 
-**Why this helps:** New format = new product trio + new concrete factory. The body of `export_package` stays stable.
+**Why this helps:** New class = new product trio + new concrete factory. The body of `equip_hero` stays stable.
 
 ---
 
 ## 4. Complete worked solution (runnable)
 
-Same code as the steps above, assembled so you can run it end-to-end. Demonstrates **PDF** and **HTML** kits—each consistent.
+Same code as the steps above, assembled so you can run it end-to-end. Demonstrates **Warrior** and **Mage** kits—each consistent.
 
-> **Follow along:** Save as `pagecraft_abstract_factory.py`, run `python pagecraft_abstract_factory.py`, and match the expected output.
+> **Follow along:** Save as `ironspire_abstract_factory.py`, run `python ironspire_abstract_factory.py`, and match the expected output.
 
 ```python
-"""Abstract Factory demo — PageCraft export kits (stdlib only)."""
+"""Abstract Factory demo — Ironspire class kits (stdlib only)."""
 
 from abc import ABC, abstractmethod
 
 
 # --- Abstract products ---
 
-class Cover(ABC):
+class Weapon(ABC):
     @abstractmethod
-    def render(self) -> str:
+    def describe(self) -> str:
         ...
 
 
-class Toc(ABC):
+class Armor(ABC):
     @abstractmethod
-    def render(self) -> str:
+    def describe(self) -> str:
         ...
 
 
-class Report(ABC):
+class Ability(ABC):
     @abstractmethod
-    def render(self) -> str:
+    def describe(self) -> str:
         ...
 
 
-# --- PDF family ---
+# --- Warrior family ---
 
-class PdfCover(Cover):
-    def __init__(self, title: str) -> None:
-        self.title = title
+class IronGreatsword(Weapon):
+    def __init__(self, hero: str) -> None:
+        self.hero = hero
 
-    def render(self) -> str:
-        return f"[PDF cover] {self.title}"
-
-
-class PdfToc(Toc):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
-
-    def render(self) -> str:
-        return "[PDF TOC] " + " | ".join(self.sections)
+    def describe(self) -> str:
+        return f"[Warrior weapon] Iron Greatsword — for {self.hero}"
 
 
-class PdfReport(Report):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
-
-    def render(self) -> str:
-        return "[PDF body] " + " / ".join(self.sections)
+class PlateMail(Armor):
+    def describe(self) -> str:
+        return "[Warrior armor] Plate Mail"
 
 
-# --- HTML family ---
-
-class HtmlCover(Cover):
-    def __init__(self, title: str) -> None:
-        self.title = title
-
-    def render(self) -> str:
-        return f"<h1>{self.title}</h1>"
+class Cleave(Ability):
+    def describe(self) -> str:
+        return "[Warrior ability] Cleave"
 
 
-class HtmlToc(Toc):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
+# --- Mage family ---
 
-    def render(self) -> str:
-        items = "".join(f"<li>{s}</li>" for s in self.sections)
-        return f"<ul>{items}</ul>"
+class OakStaff(Weapon):
+    def __init__(self, hero: str) -> None:
+        self.hero = hero
+
+    def describe(self) -> str:
+        return f"[Mage weapon] Oak Staff — for {self.hero}"
 
 
-class HtmlReport(Report):
-    def __init__(self, sections: list[str]) -> None:
-        self.sections = sections
+class SpellRobe(Armor):
+    def describe(self) -> str:
+        return "[Mage armor] Spell Robe"
 
-    def render(self) -> str:
-        return "".join(f"<p>{s}</p>" for s in self.sections)
+
+class Fireball(Ability):
+    def describe(self) -> str:
+        return "[Mage ability] Fireball"
 
 
 # --- Abstract factory + concrete factories ---
 
-class ExportKitFactory(ABC):
+class ClassKitFactory(ABC):
     @abstractmethod
-    def create_cover(self, title: str) -> Cover:
+    def create_weapon(self, hero: str) -> Weapon:
         ...
 
     @abstractmethod
-    def create_toc(self, sections: list[str]) -> Toc:
+    def create_armor(self) -> Armor:
         ...
 
     @abstractmethod
-    def create_report(self, sections: list[str]) -> Report:
+    def create_ability(self) -> Ability:
         ...
 
 
-class PdfExportKitFactory(ExportKitFactory):
-    def create_cover(self, title: str) -> Cover:
-        return PdfCover(title)
+class WarriorKitFactory(ClassKitFactory):
+    def create_weapon(self, hero: str) -> Weapon:
+        return IronGreatsword(hero)
 
-    def create_toc(self, sections: list[str]) -> Toc:
-        return PdfToc(sections)
+    def create_armor(self) -> Armor:
+        return PlateMail()
 
-    def create_report(self, sections: list[str]) -> Report:
-        return PdfReport(sections)
-
-
-class HtmlExportKitFactory(ExportKitFactory):
-    def create_cover(self, title: str) -> Cover:
-        return HtmlCover(title)
-
-    def create_toc(self, sections: list[str]) -> Toc:
-        return HtmlToc(sections)
-
-    def create_report(self, sections: list[str]) -> Report:
-        return HtmlReport(sections)
+    def create_ability(self) -> Ability:
+        return Cleave()
 
 
-FACTORIES: dict[str, ExportKitFactory] = {
-    "pdf": PdfExportKitFactory(),
-    "html": HtmlExportKitFactory(),
+class MageKitFactory(ClassKitFactory):
+    def create_weapon(self, hero: str) -> Weapon:
+        return OakStaff(hero)
+
+    def create_armor(self) -> Armor:
+        return SpellRobe()
+
+    def create_ability(self) -> Ability:
+        return Fireball()
+
+
+FACTORIES: dict[str, ClassKitFactory] = {
+    "warrior": WarriorKitFactory(),
+    "mage": MageKitFactory(),
 }
 
 
-def export_package(factory: ExportKitFactory, title: str, sections: list[str]) -> None:
+def equip_hero(factory: ClassKitFactory, hero: str) -> None:
     # Client never mixes families: one factory for the whole kit
-    cover = factory.create_cover(title)
-    toc = factory.create_toc(sections)
-    body = factory.create_report(sections)
-    print(cover.render())
-    print(toc.render())
-    print(body.render())
+    weapon = factory.create_weapon(hero)
+    armor = factory.create_armor()
+    ability = factory.create_ability()
+    print(weapon.describe())
+    print(armor.describe())
+    print(ability.describe())
 
 
 if __name__ == "__main__":
-    sections = ["Traffic", "Revenue", "Retention"]
-    print("--- PDF kit ---")
-    export_package(FACTORIES["pdf"], "March Analytics", sections)
-    print("--- HTML kit ---")
-    export_package(FACTORIES["html"], "March Analytics", sections)
+    print("--- Warrior kit ---")
+    equip_hero(FACTORIES["warrior"], "Lyra")
+    print("--- Mage kit ---")
+    equip_hero(FACTORIES["mage"], "Lyra")
 ```
 
 **Expected output (solution):**
 
 ```text
---- PDF kit ---
-[PDF cover] March Analytics
-[PDF TOC] Traffic | Revenue | Retention
-[PDF body] Traffic / Revenue / Retention
---- HTML kit ---
-<h1>March Analytics</h1>
-<ul><li>Traffic</li><li>Revenue</li><li>Retention</li></ul>
-<p>Traffic</p><p>Revenue</p><p>Retention</p>
+--- Warrior kit ---
+[Warrior weapon] Iron Greatsword — for Lyra
+[Warrior armor] Plate Mail
+[Warrior ability] Cleave
+--- Mage kit ---
+[Mage weapon] Oak Staff — for Lyra
+[Mage armor] Spell Robe
+[Mage ability] Fireball
 ```
 
-Compare with the problem demo: each kit is internally consistent—no HTML cover next to a PDF TOC.
+Compare with the problem demo: each kit is internally consistent—no mage staff next to plate mail.
 
 ---
 
@@ -492,16 +459,16 @@ Abstract Factory often _uses_ Factory Method-style methods inside each concrete 
 
 ## 6. Watch out for these traps
 
-- Selecting each product with separate `if format` blocks
-- Letting DTOs or HTTP layers construct concrete PDF/HTML types directly
+- Selecting each product with separate `if class_name` blocks
+- Letting spawn scripts or UI layers construct concrete warrior/mage types directly
 - Growing a “god factory” that creates unrelated objects “just because”
-- Porting PageCraft names into the greenhouse device-family lab
+- Porting Ironspire names into the greenhouse device-family lab
 
 ---
 
 ## 7. Try this
 
-In `pagecraft_abstract_factory.py`, add a **Markdown** family (`MdCover`, `MdToc`, `MdReport` + `MdExportKitFactory`), register `"md"` in `FACTORIES`, and export a kit. Re-run. The body of `export_package` should stay unchanged.
+In `ironspire_abstract_factory.py`, add a **Rogue** family (`ShadowDagger`, `LeatherArmor`, `Backstab` + `RogueKitFactory`), register `"rogue"` in `FACTORIES`, and equip a hero. Re-run. The body of `equip_hero` should stay unchanged.
 
 ---
 
@@ -510,7 +477,7 @@ In `pagecraft_abstract_factory.py`, add a **Markdown** family (`MdCover`, `MdToc
 | Term | Definition |
 |------|------------|
 | **Abstract Factory** | Creational pattern for families of related products |
-| **Product family** | Set of products that must be used together (e.g. all PDF) |
+| **Product family** | Set of products that must be used together (e.g. all warrior) |
 | **Concrete factory** | Implements creation methods for one family |
 | **Consistency constraint** | Business rule that siblings must match |
 
@@ -536,12 +503,12 @@ Phase 3 asks you to provision a **matching kit of related devices** for a simula
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
-| `Cover` + `Toc` + `Report` family | Matching kit: sensor + actuator siblings for one family |
-| `ExportKitFactory` / `PdfExportKitFactory` | Device-kit factory for `simulation` vs `edge` (lab names) |
-| PDF vs HTML — do not mix siblings | Do not pair a simulation sensor with an edge actuator from another kit |
-| PageCraft export | Persist provisioned devices; return DTOs from the lab |
+| `Weapon` + `Armor` + `Ability` family | Matching kit: sensor + actuator siblings for one family |
+| `ClassKitFactory` / `WarriorKitFactory` | Device-kit factory for `simulation` vs `edge` (lab names) |
+| Warrior vs mage — do not mix siblings | Do not pair a simulation sensor with an edge actuator from another kit |
+| Ironspire class kit | Persist provisioned devices; return DTOs from the lab |
 
-**Do / don’t:** **Do** create the whole kit through one factory. **Don’t** paste PageCraft export classes, and don’t assemble kits with independent `if` branches per device role.
+**Do / don’t:** **Do** create the whole kit through one factory. **Don’t** paste Ironspire class-kit classes, and don’t assemble kits with independent `if` branches per device role.
 
 ---
 

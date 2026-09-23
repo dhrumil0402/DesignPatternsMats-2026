@@ -96,7 +96,7 @@ sequenceDiagram
 
 ### Related patterns
 
-- **Abstract Factory** — Factory Method creates **one** product at a time; Abstract Factory creates a **kit** of related products that must match (PDF cover + PDF TOC + PDF body). Factory Method often appears *inside* Abstract Factory implementations.
+- **Abstract Factory** — Factory Method creates **one** product at a time; Abstract Factory creates a **kit** of related products that must match (warrior weapon + warrior armor + warrior ability). Factory Method often appears *inside* Abstract Factory implementations.
 - **Simple Factory** — one function with `if type` is not polymorphic extension; it centralizes pain instead of distributing it. Better than scattered constructors, weaker than real creators.
 - **Builder** — when the object is one complex aggregate built in steps with validation at the end, Builder fits better than a single `create()` (Guide 04).
 
@@ -393,7 +393,7 @@ Compare with the problem demo: push no longer raises—and `notify_customer` did
 | | Factory Method | Abstract Factory (Guide 03) |
 |--|----------------|-----------------------------|
 | Focus | One product family member at a time | A **kit** of related products that must match |
-| Example | “Make an SMS notifier” | “Make a whole PDF export kit: report + cover + TOC” |
+| Example | “Make an SMS notifier” | “Make a whole warrior class kit: weapon + armor + ability” |
 | Extension | New creator for a new product | New factory for a new product line |
 
 | Approach | Smell |
