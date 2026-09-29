@@ -2,11 +2,11 @@
 
 **Lab:** [Requirements](../../phases/phase-05/requirements.md) · [Guided check](../../phases/phase-05/guided-check.md) · [Questions](../../phases/phase-05/questions.md)
 
-## Chapter 5: "The calendar that speaks XML"
+## Chapter 5: "The product card that speaks two APIs"
 
-**MeetSync** is a modern scheduling app. Your product team wants a single `EventSource` port: `list_events(day) -> list[Event]`. Finance still runs **LegacyCal**, a 2009 service that returns XML with odd field names (`evt_start_epoch`, `subj`).
+A shopper opens the oak lamp page on **BrightCart**. The product card wants one shape: `ProductSource.fetch(sku) -> Product` — a name, a price in euros, and whether the lamp can be ordered. **BulkNest** answers in JSON (`item_title`, `price_cents`, `on_hand`). **Atelier** answers in XML (`label`, `price="45,90"`, `stock="yes"`).
 
-You cannot rewrite LegacyCal. You also cannot let every service parse XML. You need an **Adapter**: a thin translator that makes the old API look like the new port.
+BrightCart cannot rewrite either supplier. It also cannot let the product card parse both dialects. It needs an **Adapter** for each API: a thin translator that makes that supplier look like the port the card already speaks.
 
 *Head First Design Patterns* covers Adapter in Chapter 7. Refactoring Guru: convert one interface into another clients expect ([Adapter](https://refactoring.guru/design-patterns/adapter)).
 
@@ -20,7 +20,7 @@ By the end of this guide you will be able to:
 - Separate a domain port from a vendor/legacy SDK
 - Write a small adapter that translates data without embedding business rules
 - Contrast Adapter with Facade
-- Bridge the idea to Phase 5 without copying MeetSync types
+- Bridge the idea to Phase 5 without copying BrightCart types
 
 ---
 
@@ -36,13 +36,13 @@ By the end of this guide you will be able to:
 
 Integration reality: vendors ship SDKs with odd method names, XML payloads, blocking I/O, or status codes your domain should never see. Rewriting the vendor is rarely an option. Letting every service import the legacy client spreads the pain—business rules get tangled with parsing, unit conversion, and retry logic.
 
-The smell is **business code speaking a foreign protocol**. `AgendaService` should not know about `evt_start_epoch` or XPath.
+The smell is **business code speaking a foreign protocol**. `ProductCard` should not know about `price_cents` or `price="45,90"`.
 
 ### Analogy — travel power plug adapter
 
-Your laptop expects a grounded Type F outlet. The hotel wall delivers something else. You do not rewire the hotel; you use a **plug adapter** that presents the interface your device expects on one side and speaks the wall’s interface on the other.
+Your laptop expects a grounded Type F outlet. The hotel wall delivers something else. You do not rewire the hotel; you use a **plug adapter** that presents the interface your device expects on one side and speaks the wall’s interface on the other. Two different wall sockets still need the same plug on the laptop side — one adapter per socket, not a new laptop.
 
-The adapter does not decide your meeting schedule—that is domain logic. It only **translates shape and protocol** so your app can call `list_events(day)` while LegacyCal still returns XML internally.
+The adapter does not set the lamp’s markup or VAT — that is domain logic. It only **translates shape and protocol** so the product card can call `fetch(sku)` while BulkNest still returns cents and Atelier still returns XML.
 
 ### Solution structure
 
@@ -59,18 +59,18 @@ Keep adapters **thin**: map fields, convert units, handle errors at the boundary
 
 ```mermaid
 sequenceDiagram
-  participant Client as AgendaService
-  participant Port as EventSource
+  participant Client as ProductCard
+  participant Port as ProductSource
   participant Adapter
-  participant Legacy as LegacyCalClient
-  Client->>Port: list_events(day)
-  Port->>Adapter: list_events(day)
-  Adapter->>Legacy: fetch XML
-  Legacy-->>Adapter: raw payload
-  Adapter-->>Client: list of Event value objects
+  participant Supplier as SupplierClient
+  Client->>Port: fetch(sku)
+  Port->>Adapter: fetch(sku)
+  Adapter->>Supplier: fetch JSON or XML
+  Supplier-->>Adapter: raw payload
+  Adapter-->>Client: one Product
 ```
 
-The client sees only `EventSource`. The adapter is the only place that imports LegacyCal.
+The client sees only `ProductSource`. Each adapter is the only place that imports its supplier client.
 
 ### When to use / when to skip
 
@@ -100,200 +100,262 @@ The client sees only `EventSource`. The adapter is the only place that imports L
 
 ## 1. The sticky problem
 
-### 1.1 Smell: business code speaks XML
+Same morning. The shopper is still waiting on the oak lamp page. The card has no translator, so it walks up to both counters itself.
+
+### 1.1 Smell: the card speaks both dialects
 
 ```python
-# Smell: AgendaService imports XML and knows LegacyCal field names
-raw_xml = self.legacy.fetch_day_xml(day)
-for node in ET.fromstring(raw_xml).findall("evt"):
-    titles.append(node.attrib["subj"])  # vendor dialect leaked upward
+# The card leans over BulkNest's counter and reads price_cents itself.
+raw = json.loads(self.bulk.fetch_json(sku))
+title = raw["item_title"]
+# Then it leans over Atelier's counter and parses the comma price itself.
+node = ET.fromstring(self.atelier.fetch_xml(sku))
+price = node.attrib["price"]  # "45,90" — supplier dialect leaked upward
 ```
 
-**Root cause:** Application services depend on a foreign interface. Changing vendors means rewriting business code.
+**Root cause:** Application services depend on a foreign interface. Changing suppliers means rewriting the product card.
 
 ### 1.2 Runnable problem demo
 
-> **Follow along:** Save as `meetsync_before.py`, run `python meetsync_before.py`.
+> **Follow along:** Save as `brightcart_before.py`, run `python brightcart_before.py`.
 
 ```python
-"""Problem demo: every feature parses LegacyCal XML."""
+"""Monday morning at BrightCart. The product card speaks two supplier dialects."""
 
+import json
 import xml.etree.ElementTree as ET
 
 
-class LegacyCalClient:
-    def fetch_day_xml(self, day: str) -> str:
-        return (
-            f'<day date="{day}">'
-            f'<evt subj="Budget review" evt_start_epoch="1714564800"/>'
-            f'<evt subj="Team sync" evt_start_epoch="1714572000"/>'
-            f"</day>"
+class BulkNestClient:
+    """Adaptee. BulkNest's counter — BrightCart does not control this JSON."""
+
+    def fetch_json(self, sku: str) -> str:
+        return json.dumps(
+            {
+                "sku": sku,
+                "item_title": "Oak lamp",
+                "price_cents": 4590,
+                "on_hand": 12,
+            }
         )
 
 
-class AgendaService:
-    def __init__(self, legacy: LegacyCalClient) -> None:
-        self.legacy = legacy
+class AtelierClient:
+    """Adaptee. Atelier's counter — BrightCart does not control this XML."""
 
-    def morning_titles(self, day: str) -> list[str]:
-        # Hotspot: XML + epoch math belong at the edge, not here
-        root = ET.fromstring(self.legacy.fetch_day_xml(day))
-        return [node.attrib["subj"] for node in root.findall("evt")]
+    def fetch_xml(self, sku: str) -> str:
+        return f'<item sku="{sku}" label="Oak lamp" price="45,90" stock="yes"/>'
+
+
+class ProductCard:
+    def __init__(self, bulk: BulkNestClient, atelier: AtelierClient) -> None:
+        self.bulk = bulk
+        self.atelier = atelier
+
+    def line(self, sku: str) -> str:
+        # No port yet. The card itself is the one who knows both dialects.
+        raw = json.loads(self.bulk.fetch_json(sku))
+        node = ET.fromstring(self.atelier.fetch_xml(sku))
+        return f"{raw['item_title']} @ {raw['price_cents']} cents / {node.attrib['price']}"
 
 
 if __name__ == "__main__":
-    titles = AgendaService(LegacyCalClient()).morning_titles("2024-05-01")
-    print("titles:", titles)
-    print("PAIN: AgendaService is coupled to XML and LegacyCal field names")
+    card = ProductCard(BulkNestClient(), AtelierClient())
+    card.line("LAMP-OAK")  # both dialects run; the tangle stays off the page
+    print("A shopper opens the oak lamp page.")
+    print("The card asks BulkNest and reads item_title and price_cents itself.")
+    print('The card asks Atelier and parses price="45,90" itself.')
+    print("PAIN: the product card speaks two supplier dialects.")
 ```
 
 **Expected output (problem):**
 
 ```text
-titles: ['Budget review', 'Team sync']
-PAIN: AgendaService is coupled to XML and LegacyCal field names
+A shopper opens the oak lamp page.
+The card asks BulkNest and reads item_title and price_cents itself.
+The card asks Atelier and parses price="45,90" itself.
+PAIN: the product card speaks two supplier dialects.
 ```
 
 ### What goes wrong when requirements change
 
-Swap LegacyCal for a CSV dump or Google Calendar SDK and you rewrite `AgendaService`. Add a second feature that needs start times and you duplicate XML parsing.
+Swap BulkNest for another JSON shop, or add a second page that needs `available`, and you rewrite `ProductCard`. A third feature that shows the euro price duplicates the cents math and the comma-to-decimal parse.
 
 ---
 
 ## 2. Pattern in practice
 
-The MeetSync runnable example below wraps LegacyCal’s XML client behind an `EventSource` port—`AgendaService` never parses `evt_start_epoch` itself.
+The translators arrive before lunch. Each one stands at one counter. The card asks only for a `Product`.
 
 ---
 
 ## 3. Building the solution (step by step)
 
-### Step A — Stable port + value type
+### Step A — The card names the product it already understands
 
 ```python
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from decimal import Decimal
 
 
 @dataclass(frozen=True)
-class Event:
-    title: str
-    starts_at: datetime
+class Product:
+    name: str
+    price_eur: Decimal
+    available: bool
 
 
-class EventSource(ABC):
+class ProductSource(ABC):
     @abstractmethod
-    def list_events(self, day: str) -> list[Event]:
-        """Application-facing port — no XML here."""
+    def fetch(self, sku: str) -> Product:
+        """The port the card trusts — no cents, no XML, no commas."""
         ...
 ```
 
-### Step B — Adapter translates only
+### Step B — A translator stands at BulkNest's counter
 
 ```python
-class LegacyCalEventAdapter(EventSource):
-    def __init__(self, legacy: LegacyCalClient) -> None:
-        self._legacy = legacy
+class BulkNestAdapter(ProductSource):
+    def __init__(self, bulk: BulkNestClient) -> None:
+        self._bulk = bulk  # composition: the adapter holds the adaptee
 
-    def list_events(self, day: str) -> list[Event]:
-        # Translation only: field names, types — not scheduling policy
-        root = ET.fromstring(self._legacy.fetch_day_xml(day))
+    def fetch(self, sku: str) -> Product:
+        # Translation only: cents and on_hand — not markup, not VAT
+        raw = json.loads(self._bulk.fetch_json(sku))
         ...
 ```
 
-### Step C — Thin service
+### Step C — The card talks only to the port
 
 ```python
-class AgendaService:
-    def __init__(self, source: EventSource) -> None:
-        self.source = source  # depends on port, not LegacyCal
+class ProductCard:
+    def __init__(self, source: ProductSource) -> None:
+        self.source = source  # the card never imports BulkNest or Atelier
 
-    def morning_titles(self, day: str) -> list[str]:
-        return [e.title for e in self.source.list_events(day)]
+    def line(self, sku: str) -> str:
+        product = self.source.fetch(sku)
+        return f"{product.name} — {product.price_eur} EUR, available={product.available}"
 ```
 
 ---
 
 ## 4. Complete worked solution (runnable)
 
-> **Follow along:** Save as `meetsync_adapter.py`, run `python meetsync_adapter.py`.
+> **Follow along:** Save as `brightcart_adapter.py`, run `python brightcart_adapter.py`.
 
 ```python
-"""Adapter demo — MeetSync legacy calendar (stdlib only)."""
+"""Later that morning. Two translators, one product card (stdlib only)."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from decimal import Decimal
+import json
 import xml.etree.ElementTree as ET
 
 
 @dataclass(frozen=True)
-class Event:
-    title: str
-    starts_at: datetime
+class Product:
+    name: str
+    price_eur: Decimal
+    available: bool
 
 
-class EventSource(ABC):
+class ProductSource(ABC):
+    """Port. The only language the product card speaks."""
+
     @abstractmethod
-    def list_events(self, day: str) -> list[Event]:
+    def fetch(self, sku: str) -> Product:
         ...
 
 
-class LegacyCalClient:
-    """Third-party / legacy SDK — we do not control this."""
+class BulkNestClient:
+    """Adaptee. BulkNest still answers in cents. We do not control this JSON."""
 
-    def fetch_day_xml(self, day: str) -> str:
-        return (
-            f'<day date="{day}">'
-            f'<evt subj="Budget review" evt_start_epoch="1714564800"/>'
-            f'<evt subj="Team sync" evt_start_epoch="1714572000"/>'
-            f"</day>"
+    def fetch_json(self, sku: str) -> str:
+        return json.dumps(
+            {
+                "sku": sku,
+                "item_title": "Oak lamp",
+                "price_cents": 4590,
+                "on_hand": 12,
+            }
         )
 
 
-class LegacyCalEventAdapter(EventSource):
-    def __init__(self, legacy: LegacyCalClient) -> None:
-        self._legacy = legacy
+class AtelierClient:
+    """Adaptee. Atelier still answers in XML. We do not control this document."""
 
-    def list_events(self, day: str) -> list[Event]:
-        root = ET.fromstring(self._legacy.fetch_day_xml(day))
-        events: list[Event] = []
-        for node in root.findall("evt"):
-            epoch = int(node.attrib["evt_start_epoch"])
-            events.append(
-                Event(
-                    title=node.attrib["subj"],
-                    starts_at=datetime.fromtimestamp(epoch, tz=timezone.utc),
-                )
-            )
-        return events
+    def fetch_xml(self, sku: str) -> str:
+        return f'<item sku="{sku}" label="Oak lamp" price="45,90" stock="yes"/>'
 
 
-class AgendaService:
-    def __init__(self, source: EventSource) -> None:
+class BulkNestAdapter(ProductSource):
+    """Translator at BulkNest's counter. The card never sees cents."""
+
+    def __init__(self, bulk: BulkNestClient) -> None:
+        self._bulk = bulk
+
+    def fetch(self, sku: str) -> Product:
+        raw = json.loads(self._bulk.fetch_json(sku))
+        price = (Decimal(raw["price_cents"]) / Decimal(100)).quantize(Decimal("0.01"))
+        return Product(
+            name=raw["item_title"],
+            price_eur=price,
+            available=int(raw["on_hand"]) > 0,
+        )
+
+
+class AtelierAdapter(ProductSource):
+    """Translator at Atelier's counter. The card never sees XML."""
+
+    def __init__(self, atelier: AtelierClient) -> None:
+        self._atelier = atelier
+
+    def fetch(self, sku: str) -> Product:
+        node = ET.fromstring(self._atelier.fetch_xml(sku))
+        price = Decimal(node.attrib["price"].replace(",", ".")).quantize(Decimal("0.01"))
+        return Product(
+            name=node.attrib["label"],
+            price_eur=price,
+            available=node.attrib["stock"] == "yes",
+        )
+
+
+class ProductCard:
+    """Client. Written once. It asks the port and reads the reply aloud."""
+
+    def __init__(self, source: ProductSource) -> None:
         self.source = source
 
-    def morning_titles(self, day: str) -> list[str]:
-        return [e.title for e in self.source.list_events(day)]
+    def line(self, sku: str) -> str:
+        product = self.source.fetch(sku)
+        return f"{product.name} — {product.price_eur} EUR, available={product.available}"
 
 
 if __name__ == "__main__":
-    source: EventSource = LegacyCalEventAdapter(LegacyCalClient())
-    service = AgendaService(source)
-    print("titles:", service.morning_titles("2024-05-01"))
-    events = source.list_events("2024-05-01")
-    print("first starts_at:", events[0].starts_at.isoformat())
+    print("The shopper opens the oak lamp page again.")
+    bulk_card = ProductCard(BulkNestAdapter(BulkNestClient()))
+    atelier_card = ProductCard(AtelierAdapter(AtelierClient()))
+    print(
+        "BulkNest still answers in cents. A translator speaks to the card: "
+        + bulk_card.line("LAMP-OAK")
+    )
+    print(
+        "Atelier still answers in XML. Another translator speaks to the card: "
+        + atelier_card.line("LAMP-OAK")
+    )
+    print("The card never learned either dialect.")
 ```
 
 **Expected output (solution):**
 
 ```text
-titles: ['Budget review', 'Team sync']
-first starts_at: 2024-05-01T12:00:00+00:00
+The shopper opens the oak lamp page again.
+BulkNest still answers in cents. A translator speaks to the card: Oak lamp — 45.90 EUR, available=True
+Atelier still answers in XML. Another translator speaks to the card: Oak lamp — 45.90 EUR, available=True
+The card never learned either dialect.
 ```
-
-(`starts_at` may shift by timezone on your machine if you change the adapter; with UTC as above it stays stable.)
 
 ---
 
@@ -309,15 +371,15 @@ first starts_at: 2024-05-01T12:00:00+00:00
 
 ## 6. Watch out for these traps
 
-- Putting scheduling policy inside the adapter
-- Leaking XML types through the port
-- Reusing MeetSync names in the greenhouse vendor-adapter lab
+- Putting markup, VAT, or “hide if out of stock” inside the adapter
+- Leaking JSON or XML types through the port
+- Reusing BrightCart names in the greenhouse vendor-adapter lab
 
 ---
 
 ## 7. Try this
 
-Add a `CsvDumpEventAdapter` that reads a multiline string `title,start_iso` and implements `EventSource`. Wire it into `AgendaService` without changing `morning_titles`. Re-run.
+A third supplier emails a spreadsheet before close of day. Add a `CsvCatalogAdapter` that reads one line, `Oak lamp,45.90,yes`, and implements `ProductSource`. Wire it into the same `ProductCard` without changing `line`. Re-run. The card should speak the same sentence. The spreadsheet dialect stays inside the new translator.
 
 ---
 
@@ -347,11 +409,11 @@ Phase 5 wraps vendor, simulation, or MQTT payloads behind ports. Keep adapters t
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
-| `LegacyCalClient` (foreign shape) | Simulation driver, vendor stub payload, or an MQTT payload dict |
-| `EventSource` port | `SensorPort` (`read`) and `ActuatorPort` (`apply`) |
-| `LegacyCalEventAdapter` | `SimulationSensorAdapter` / `VendorStubSensorAdapter` / MQTT translator (`source` `mqtt`; no broker) |
-| `Event` (normalized) | `Reading` (value, unit, source, time) |
-| `AgendaService` | One ingest writer. Phase 12 may pass the same dict in from device HTTP or from the optional broker |
+| BulkNest JSON / Atelier XML (foreign shape) | Simulation driver, vendor stub payload, or an MQTT payload dict |
+| `ProductSource` port | `SensorPort` (`read`) and `ActuatorPort` (`apply`) |
+| `BulkNestAdapter` / `AtelierAdapter` | `SimulationSensorAdapter` / `VendorStubSensorAdapter` / MQTT translator (`source` `mqtt`; no broker) |
+| `Product` (normalized) | `Reading` (value, unit, source, time) |
+| `ProductCard` | One ingest writer. Phase 12 may pass the same dict in from device HTTP or from the optional broker |
 
 **Do / don’t:** **Do** depend on `SensorPort` in application code, and sample only when tracking is on and the device protocol is simulation. **Don’t** decide irrigation in an adapter (that is Strategy), don’t open a broker socket in this phase, and don’t leak vendor XML/JSON types into routers. Sensor cards poll the latest stored reading until Phase 12.
 
