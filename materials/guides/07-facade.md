@@ -2,11 +2,11 @@
 
 **Lab:** [Requirements](../../phases/phase-07/requirements.md) · [Guided check](../../phases/phase-07/guided-check.md) · [Questions](../../phases/phase-07/questions.md)
 
-## Chapter 7: "One button for ClipRiver"
+## Chapter 7: "One button for FieldWing"
 
-**ClipRiver** hosts short videos. Uploading currently means: transcode, thumbnail, CDN, DB row, notify. The dashboard team copied that dance into three handlers. When CDN order changed, three bugs shipped.
+A pilot wants survey drone `wing-4` in the air on **FieldWing**. Launch is five steps: battery check, GPS lock, arm motors, start camera, tell the ground station. The pad button does that dance itself. The mission scheduler would have to copy it.
 
-You need a **Facade**: one operation—`publish_clip(...)`—that orchestrates the subsystem.
+You need a **Facade**: one operation—`LaunchFacade.launch(drone_id)`—that orchestrates the subsystem.
 
 *Head First Design Patterns* pairs Facade with Adapter in Chapter 7. Refactoring Guru: provide a simplified interface to a set of subsystems ([Facade](https://refactoring.guru/design-patterns/facade)).
 
@@ -19,7 +19,7 @@ By the end of this guide you will be able to:
 - State Facade’s intent
 - Design a small façade that orchestrates without owning all domain logic
 - Contrast Facade with Adapter
-- Bridge the idea to Phase 7 overview APIs
+- Bridge the idea to Phase 7 without copying FieldWing types
 
 ---
 
@@ -33,15 +33,13 @@ By the end of this guide you will be able to:
 
 ### The problem in plain language
 
-A real feature touches many parts: repositories, adapters, policies, logging, notifications. Without a façade, every HTTP handler, CLI command, and test duplicates the same five-step dance. When step order changes (CDN before DB, or vice versa), every copy breaks differently.
+A real feature touches many parts: repositories, adapters, policies, logging, notifications. Without a façade, every HTTP handler, CLI command, and test duplicates the same five-step dance. When step order changes, every copy breaks differently.
 
 The smell is **orchestration leakage**: callers know too much about subsystem choreography. The dashboard should ask “give me location overview,” not “join these four queries and map these six DTO fields.”
 
-### Analogy — hotel concierge
+### Analogy — starting a car
 
-A guest wants “dinner reservations and a taxi at 8.” They speak to the **concierge** once. Behind the desk, housekeeping, billing, restaurant booking, and valet coordinate. The guest does not visit each department, know internal extension numbers, or enforce the correct order of operations.
-
-A Facade is that concierge for code: one method (`publish_clip`, `get_location_overview`) that coordinates subsystems while keeping their classes intact.
+You turn one key, or press one start button. That gesture primes the fuel pump, cranks the starter, fires the ignition, and lights the dash. The driver does not run that order and does not visit each part. FieldWing’s launch button is that key: the pilot does not arm the motors before the battery check.
 
 ### Solution structure
 
@@ -57,19 +55,19 @@ The façade **coordinates**; it should not absorb all domain rules. Heavy policy
 
 ```mermaid
 sequenceDiagram
-  participant Client as Dashboard
-  participant Facade
-  participant Repo
-  participant Readings
-  participant Rules
-  Client->>Facade: get_overview(location_id)
-  Facade->>Repo: load location + zones
-  Facade->>Readings: latest per zone
-  Facade->>Rules: active automation
-  Facade-->>Client: OverviewDto
+  participant Client as Pilot
+  participant Facade as LaunchFacade
+  participant Battery
+  participant Gps
+  participant Motors
+  Client->>Facade: launch(drone_id)
+  Facade->>Battery: check
+  Facade->>Gps: acquire
+  Facade->>Motors: arm
+  Facade-->>Client: LaunchResult
 ```
 
-One round trip for the client; multiple collaborators inside the façade.
+One call for the pilot; the façade also starts the camera and tells the ground station. Those two steps stay in the code below.
 
 ### When to use / when to skip
 
@@ -95,219 +93,231 @@ One round trip for the client; multiple collaborators inside the façade.
 
 # Part 2 — Follow along
 
-> **Follow along:** Stdlib Python only. Run the problem demo, then the complete façade script.
+> **Follow along:** Stdlib Python only. Run the problem demo first, then the complete façade script.
 
 ## 1. The sticky problem
 
-### 1.1 Smell: every caller wires the pipeline
+Same morning. The pilot is at the pad. There is no façade, so the button walks every subsystem itself.
+
+### 1.1 Smell: the pad knows the whole launch
 
 ```python
-# Smell: order + collaborators duplicated at every call site
-job = Transcoder().enqueue(file_path)
-thumb = ThumbnailService().from_file(file_path)
-url = CdnClient().put(job.output_path)
-ClipRepository().insert(creator_id, url, thumb.path)
-Notifier().clip_ready(creator_id, url)
+# The pad walks every counter itself. The scheduler would copy this order.
+BatteryMonitor().check(drone_id)
+GpsLock().acquire(drone_id)
+MotorController().arm(drone_id)
 ```
 
 **Root cause:** Clients know too many moving parts.
 
 ### 1.2 Runnable problem demo
 
-> **Follow along:** Save as `clipriver_before.py`, run `python clipriver_before.py`.
+> **Follow along:** Save as `fieldwing_before.py`, run `python fieldwing_before.py`.
 
 ```python
-"""Problem demo: upload endpoint duplicates the pipeline."""
+"""Monday morning at FieldWing. The pad button launches the drone itself."""
 
 
-class Transcoder:
-    def enqueue(self, file_path: str):
-        print(f"transcode {file_path}")
-        return type("Job", (), {"output_path": file_path + ".mp4"})()
+class BatteryMonitor:
+    """Subsystem. The pad should not be the one who calls this."""
+
+    def check(self, drone_id: str) -> str:
+        print(f"Battery clears {drone_id}.")
+        return "ok"
 
 
-class ThumbnailService:
-    def from_file(self, file_path: str):
-        print(f"thumb {file_path}")
-        return type("Thumb", (), {"path": file_path + ".jpg"})()
+class GpsLock:
+    def acquire(self, drone_id: str) -> str:
+        print(f"GPS locks a fix for {drone_id}.")
+        return "fix"
 
 
-class CdnClient:
-    def put(self, path: str) -> str:
-        url = f"https://cdn.clipriver.example/{path}"
-        print(f"cdn {url}")
-        return url
+class MotorController:
+    def arm(self, drone_id: str) -> None:
+        print(f"Motors arm on {drone_id}.")
 
 
-class ClipRepository:
-    def insert(self, creator_id: str, url: str, thumb: str) -> None:
-        print(f"db save creator={creator_id}")
+class Camera:
+    def start(self, drone_id: str) -> str:
+        print(f"Camera starts on {drone_id}.")
+        return "recording"
 
 
-class Notifier:
-    def clip_ready(self, creator_id: str, url: str) -> None:
-        print(f"notify {creator_id}")
+class GroundStation:
+    def notify(self, drone_id: str) -> None:
+        print(f"Ground station hears that {drone_id} is airborne.")
 
 
-def upload_endpoint(file_path: str, creator_id: str) -> dict:
-    # Hotspot: copy this into batch import + admin reprocess = three sources of truth
-    job = Transcoder().enqueue(file_path)
-    thumb = ThumbnailService().from_file(file_path)
-    url = CdnClient().put(job.output_path)
-    ClipRepository().insert(creator_id, url, thumb.path)
-    Notifier().clip_ready(creator_id, url)
-    return {"url": url, "thumb": thumb.path}
+def pad_button(drone_id: str) -> None:
+    # No façade yet. The pad itself knows battery, then GPS, then motors.
+    BatteryMonitor().check(drone_id)
+    GpsLock().acquire(drone_id)
+    MotorController().arm(drone_id)
+    Camera().start(drone_id)
+    GroundStation().notify(drone_id)
 
 
 if __name__ == "__main__":
-    print(upload_endpoint("clip.mov", "creator-9"))
-    print("PAIN: every new entry point must repeat all five steps in order")
+    print("A pilot presses launch for wing-4.")
+    pad_button("wing-4")
+    print("PAIN: the mission scheduler must copy those five steps in the same order")
 ```
 
 **Expected output (problem):**
 
 ```text
-transcode clip.mov
-thumb clip.mov
-cdn https://cdn.clipriver.example/clip.mov.mp4
-db save creator=creator-9
-notify creator-9
-{'url': 'https://cdn.clipriver.example/clip.mov.mp4', 'thumb': 'clip.mov.jpg'}
-PAIN: every new entry point must repeat all five steps in order
+A pilot presses launch for wing-4.
+Battery clears wing-4.
+GPS locks a fix for wing-4.
+Motors arm on wing-4.
+Camera starts on wing-4.
+Ground station hears that wing-4 is airborne.
+PAIN: the mission scheduler must copy those five steps in the same order
 ```
 
 ### What goes wrong when requirements change
 
-Insert “virus scan before CDN” in one handler and forget the other two. Ops gets inconsistent publishes.
+Add a heading check on the pad and forget the scheduler. One drone launches without a compass calibration.
 
 ---
 
 ## 2. Pattern in practice
 
-The ClipRiver runnable example below centralizes upload orchestration in `ClipPublishFacade` so dashboard handlers call one method instead of wiring transcode, thumbnail, CDN, and DB steps themselves.
+The launch order leaves the pad button. One façade runs it. The pad and the scheduler only ask for a launch.
 
 ---
 
 ## 3. Building the solution (step by step)
 
-### Step A — One entry method
+### Step A — One method holds the order
 
 ```python
-class ClipPublishFacade:
-    def publish_clip(self, file_path: str, creator_id: str) -> PublishResult:
-        # Orchestration lives once; handlers stay thin
+class LaunchFacade:
+    def launch(self, drone_id: str) -> LaunchResult:
+        # Orchestration lives once. Flight policy stays outside this method.
         ...
 ```
 
-### Step B — Thin HTTP/application edge
+### Step B — The pad only asks for a launch
 
 ```python
-def upload_endpoint(facade: ClipPublishFacade, file_path: str, creator_id: str) -> dict:
-    result = facade.publish_clip(file_path, creator_id)
-    return {"url": result.url, "thumb": result.thumb_path}
+def pad_button(facade: LaunchFacade, drone_id: str) -> LaunchResult:
+    return facade.launch(drone_id)  # the pad never imports the battery or the motors
 ```
 
 ---
 
 ## 4. Complete worked solution (runnable)
 
-> **Follow along:** Save as `clipriver_facade.py`, run `python clipriver_facade.py`.
+> **Follow along:** Save as `fieldwing_facade.py`, run `python fieldwing_facade.py`.
 
 ```python
-"""Facade demo — ClipRiver publish pipeline (stdlib only)."""
+"""Later that morning. One launch order, two callers (stdlib only)."""
 
 from dataclasses import dataclass
 
 
-@dataclass
-class PublishResult:
-    url: str
-    thumb_path: str
+@dataclass(frozen=True)
+class LaunchResult:
+    drone_id: str
+    status: str
 
 
-class Transcoder:
-    def enqueue(self, file_path: str):
-        print(f"transcode {file_path}")
-        return type("Job", (), {"output_path": file_path + ".mp4"})()
+class BatteryMonitor:
+    """Subsystem. Only the façade should call check."""
+
+    def check(self, drone_id: str) -> str:
+        print(f"Battery clears {drone_id}.")
+        return "ok"
 
 
-class ThumbnailService:
-    def from_file(self, file_path: str):
-        print(f"thumb {file_path}")
-        return type("Thumb", (), {"path": file_path + ".jpg"})()
+class GpsLock:
+    def acquire(self, drone_id: str) -> str:
+        print(f"GPS locks a fix for {drone_id}.")
+        return "fix"
 
 
-class CdnClient:
-    def put(self, path: str) -> str:
-        url = f"https://cdn.clipriver.example/{path}"
-        print(f"cdn {url}")
-        return url
+class MotorController:
+    def arm(self, drone_id: str) -> None:
+        print(f"Motors arm on {drone_id}.")
 
 
-class ClipRepository:
-    def insert(self, creator_id: str, url: str, thumb: str) -> None:
-        print(f"db save creator={creator_id}")
+class Camera:
+    def start(self, drone_id: str) -> str:
+        print(f"Camera starts on {drone_id}.")
+        return "recording"
 
 
-class Notifier:
-    def clip_ready(self, creator_id: str, url: str) -> None:
-        print(f"notify {creator_id}")
+class GroundStation:
+    def notify(self, drone_id: str) -> None:
+        print(f"Ground station hears that {drone_id} is airborne.")
 
 
-class ClipPublishFacade:
+class LaunchFacade:
+    """Facade. The only place that knows launch order. It does not decide flight policy."""
+
     def __init__(
         self,
-        transcoder: Transcoder,
-        thumbs: ThumbnailService,
-        cdn: CdnClient,
-        repo: ClipRepository,
-        notifier: Notifier,
+        battery: BatteryMonitor,
+        gps: GpsLock,
+        motors: MotorController,
+        camera: Camera,
+        ground: GroundStation,
     ) -> None:
-        self._transcoder = transcoder
-        self._thumbs = thumbs
-        self._cdn = cdn
-        self._repo = repo
-        self._notifier = notifier
+        self._battery = battery
+        self._gps = gps
+        self._motors = motors
+        self._camera = camera
+        self._ground = ground
 
-    def publish_clip(self, file_path: str, creator_id: str) -> PublishResult:
-        # Single place for publish order
-        job = self._transcoder.enqueue(file_path)
-        thumb = self._thumbs.from_file(file_path)
-        url = self._cdn.put(job.output_path)
-        self._repo.insert(creator_id, url, thumb.path)
-        self._notifier.clip_ready(creator_id, url)
-        return PublishResult(url=url, thumb_path=thumb.path)
+    def launch(self, drone_id: str) -> LaunchResult:
+        self._battery.check(drone_id)
+        self._gps.acquire(drone_id)
+        self._motors.arm(drone_id)
+        self._camera.start(drone_id)
+        self._ground.notify(drone_id)
+        return LaunchResult(drone_id=drone_id, status="airborne")
 
 
-def upload_endpoint(facade: ClipPublishFacade, file_path: str, creator_id: str) -> dict:
-    result = facade.publish_clip(file_path, creator_id)
-    return {"url": result.url, "thumb": result.thumb_path}
+def pad_button(facade: LaunchFacade, drone_id: str) -> LaunchResult:
+    """Client. It asks for a launch and does not know the five steps."""
+    return facade.launch(drone_id)
+
+
+def mission_scheduler(facade: LaunchFacade, drone_id: str) -> LaunchResult:
+    """Second client. Same door, no copied order."""
+    return facade.launch(drone_id)
 
 
 if __name__ == "__main__":
-    facade = ClipPublishFacade(
-        Transcoder(), ThumbnailService(), CdnClient(), ClipRepository(), Notifier()
+    facade = LaunchFacade(
+        BatteryMonitor(), GpsLock(), MotorController(), Camera(), GroundStation()
     )
-    # Two entry points, one orchestration
-    print("http:", upload_endpoint(facade, "clip.mov", "creator-9"))
-    print("batch:", facade.publish_clip("batch.mov", "creator-9"))
+    print("The pilot presses launch for wing-4 again.")
+    pad_button(facade, "wing-4")
+    print("The pad only asked for a launch.")
+    print("The mission scheduler asks for the same launch.")
+    mission_scheduler(facade, "wing-4")
+    print("Neither caller learned the order.")
 ```
 
 **Expected output (solution):**
 
 ```text
-transcode clip.mov
-thumb clip.mov
-cdn https://cdn.clipriver.example/clip.mov.mp4
-db save creator=creator-9
-notify creator-9
-http: {'url': 'https://cdn.clipriver.example/clip.mov.mp4', 'thumb': 'clip.mov.jpg'}
-transcode batch.mov
-thumb batch.mov
-cdn https://cdn.clipriver.example/batch.mov.mp4
-db save creator=creator-9
-notify creator-9
-batch: PublishResult(url='https://cdn.clipriver.example/batch.mov.mp4', thumb_path='batch.mov.jpg')
+The pilot presses launch for wing-4 again.
+Battery clears wing-4.
+GPS locks a fix for wing-4.
+Motors arm on wing-4.
+Camera starts on wing-4.
+Ground station hears that wing-4 is airborne.
+The pad only asked for a launch.
+The mission scheduler asks for the same launch.
+Battery clears wing-4.
+GPS locks a fix for wing-4.
+Motors arm on wing-4.
+Camera starts on wing-4.
+Ground station hears that wing-4 is airborne.
+Neither caller learned the order.
 ```
 
 ---
@@ -324,14 +334,14 @@ batch: PublishResult(url='https://cdn.clipriver.example/batch.mov.mp4', thumb_pa
 ## 6. Watch out for these traps
 
 - A façade that becomes the entire application layer
-- Hiding errors so callers cannot tell CDN failure from DB failure
-- Porting `ClipPublishFacade` into the greenhouse lab by name
+- Hiding errors so callers cannot tell a battery failure from a GPS failure
+- Porting `LaunchFacade` into the greenhouse lab by name
 
 ---
 
 ## 7. Try this
 
-Add a `VirusScanner.scan(file_path)` step before CDN inside `publish_clip`. Re-run both entry points—both should scan without duplicating the call.
+Before the motors spin, the compass must be calibrated. Add `CompassCheck.calibrate(drone_id)` inside `launch`, before `arm`. Re-run the pad and the scheduler. Both should calibrate, and neither caller should grow a copy of the call.
 
 ---
 
@@ -360,10 +370,10 @@ Phase 7 introduces a façade so the dashboard overview does not stitch many repo
 
 | Teaching (this guide) | Your lab (greenhouse) |
 | --------------------- | --------------------- |
-| Transcoder + thumbnail + CDN + repo + notifier | Zones, each with assigned devices and their readings, plus strategy and last recommendation |
-| `ClipPublishFacade` | `LocationOverviewFacade.get_overview(location_id)` |
-| `PublishResult` | `LocationOverviewDto` grouped by zone (stable JSON) |
-| ClipRiver HTTP handler calling five services | Overview router injects **only** the facade |
+| Battery, GPS, motors, camera, and ground station | Zones, each with assigned devices and their readings, plus strategy and last recommendation |
+| `LaunchFacade.launch` | `LocationOverviewFacade.get_overview(location_id)` |
+| `LaunchResult` | `LocationOverviewDto` grouped by zone (stable JSON) |
+| Pad button and mission scheduler | Overview router injects **only** the facade |
 
 **Do / don’t:** **Do** hide N+1 joins and subsystem calls behind one door, and group assigned devices and their readings under zones. **Don’t** include unassigned devices, turn the facade into a warehouse of unrelated features, or re-implement Strategy inside the overview method—delegate.
 
